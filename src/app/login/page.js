@@ -9,15 +9,19 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
+const CODIGO_ADMIN = process.env.NEXT_PUBLIC_ADMIN_SIGNUP_CODE || "";
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [modo, setModo] = useState(
     searchParams.get("modo") === "registro" ? "registro" : "ingreso"
   );
+  const [tipoCuenta, setTipoCuenta] = useState("empresa"); // "empresa" | "admin"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nombreEmpresa, setNombreEmpresa] = useState("");
+  const [codigoAdmin, setCodigoAdmin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -36,17 +40,42 @@ function LoginForm() {
   async function handleRegistro(e) {
     e.preventDefault();
     setError("");
+
+    if (tipoCuenta === "admin") {
+      if (!CODIGO_ADMIN) {
+        setError(
+          "El registro de administrador no está habilitado en este entorno."
+        );
+        return;
+      }
+      if (codigoAdmin !== CODIGO_ADMIN) {
+        setError("Código de administrador incorrecto.");
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, "usuarios", cred.user.uid), {
-        email,
-        role: "cliente",
-        nombreEmpresa: nombreEmpresa || null,
-        establecimiento_ref: null,
-        creado: serverTimestamp(),
-      });
-      router.push("/onboarding");
+
+      if (tipoCuenta === "admin") {
+        await setDoc(doc(db, "usuarios", cred.user.uid), {
+          email,
+          role: "admin",
+          establecimiento_ref: null,
+          creado: serverTimestamp(),
+        });
+        router.push("/admin");
+      } else {
+        await setDoc(doc(db, "usuarios", cred.user.uid), {
+          email,
+          role: "cliente",
+          nombreEmpresa: nombreEmpresa || null,
+          establecimiento_ref: null,
+          creado: serverTimestamp(),
+        });
+        router.push("/onboarding");
+      }
     } catch (err) {
       setError(traducirError(err.code));
     } finally {
@@ -89,19 +118,46 @@ function LoginForm() {
           }`}
           onClick={() => setModo("registro")}
         >
-          Registrar empresa
+          Crear cuenta
         </button>
       </div>
 
       <h1 className="mb-6 text-xl font-semibold">
-        {modo === "registro" ? "Crear cuenta de empresa" : "Ingresar"}
+        {modo === "registro" ? "Crear cuenta" : "Ingresar"}
       </h1>
+
+      {modo === "registro" && (
+        <div className="mb-6 flex gap-2 text-sm">
+          <button
+            type="button"
+            onClick={() => setTipoCuenta("empresa")}
+            className={`flex-1 rounded-md border px-3 py-2 ${
+              tipoCuenta === "empresa"
+                ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                : "border-neutral-300 text-neutral-500 dark:border-neutral-700"
+            }`}
+          >
+            Empresa
+          </button>
+          <button
+            type="button"
+            onClick={() => setTipoCuenta("admin")}
+            className={`flex-1 rounded-md border px-3 py-2 ${
+              tipoCuenta === "admin"
+                ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                : "border-neutral-300 text-neutral-500 dark:border-neutral-700"
+            }`}
+          >
+            Equipo del proyecto
+          </button>
+        </div>
+      )}
 
       <form
         onSubmit={modo === "registro" ? handleRegistro : handleIngreso}
         className="space-y-4"
       >
-        {modo === "registro" && (
+        {modo === "registro" && tipoCuenta === "empresa" && (
           <div>
             <label className="mb-1 block text-sm font-medium">
               Nombre de la empresa (opcional acá, lo completás en el paso
@@ -115,6 +171,26 @@ function LoginForm() {
             />
           </div>
         )}
+
+        {modo === "registro" && tipoCuenta === "admin" && (
+          <div>
+            <label className="mb-1 block text-sm font-medium">
+              Código de administrador
+            </label>
+            <input
+              type="password"
+              required
+              value={codigoAdmin}
+              onChange={(e) => setCodigoAdmin(e.target.value)}
+              className="w-full rounded-md border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
+            />
+            <p className="mt-1 text-xs text-neutral-500">
+              Te lleva directo al panel de administración, sin pedirte datos
+              de establecimiento.
+            </p>
+          </div>
+        )}
+
         <div>
           <label className="mb-1 block text-sm font-medium">Email</label>
           <input
