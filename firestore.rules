@@ -13,13 +13,13 @@ service cloud.firestore {
         get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role == 'admin';
     }
 
-    function esDueñoDelEstablecimiento(establecimientoId) {
+    function esDuenioDelEstablecimiento(establecimientoId) {
       return estaLogueado() &&
         exists(/databases/$(database)/documents/establecimientos/$(establecimientoId)) &&
         get(/databases/$(database)/documents/establecimientos/$(establecimientoId)).data.usuario_ref == request.auth.uid;
     }
 
-    // ---- Base normativa: lectura pública, escritura solo admin (se carga vía seed o consola) ----
+    // ---- Base normativa: lectura publica, escritura solo admin (se carga via seed o consola) ----
     match /jurisdicciones/{id} {
       allow read: if true;
       allow write: if esAdmin();
@@ -40,6 +40,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if esAdmin();
     }
+    match /reglas/{id} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
 
     // ---- Usuarios: cada uno lee/edita su propio perfil; el admin lee todos ----
     match /usuarios/{uid} {
@@ -49,7 +53,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---- Establecimientos: el dueño puede crear/leer/editar el suyo; admin lee todos ----
+    // ---- Establecimientos: el dueno puede crear/leer/editar el suyo; admin lee todos ----
     match /establecimientos/{id} {
       allow create: if estaLogueado() && request.resource.data.usuario_ref == request.auth.uid;
       allow read: if estaLogueado() && (resource.data.usuario_ref == request.auth.uid || esAdmin());
@@ -60,11 +64,11 @@ service cloud.firestore {
     // ---- Cumplimiento: ligado al establecimiento del usuario logueado, o admin ----
     match /cumplimiento/{id} {
       allow read: if estaLogueado() &&
-        (esDueñoDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
+        (esDuenioDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
       allow create: if estaLogueado() &&
-        (esDueñoDelEstablecimiento(request.resource.data.establecimiento_ref) || esAdmin());
+        (esDuenioDelEstablecimiento(request.resource.data.establecimiento_ref) || esAdmin());
       allow update: if estaLogueado() &&
-        (esDueñoDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
+        (esDuenioDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
       allow delete: if false;
     }
   }
