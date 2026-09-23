@@ -74,60 +74,89 @@ export default function Home() {
 
   return (
     <div>
-      <section className="mx-auto max-w-5xl px-6 py-20">
-        <p className="mb-3 text-sm font-medium text-emerald-600">
-          Gestión ambiental de residuos industriales
-        </p>
-        <h1 className="max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">
-          De normativa dispersa a un checklist claro de qué le aplica a tu
-          empresa.
-        </h1>
-        <p className="mt-6 max-w-2xl text-lg text-neutral-600 dark:text-neutral-400">
-          Cargá los datos de tu establecimiento y la herramienta cruza
-          automáticamente la normativa nacional, provincial y municipal (y de
-          autoridades de cuenca, cuando corresponde) sobre residuos,
-          efluentes y emisiones, para decirte exactamente qué trámites
-          necesitás y ante qué organismo.
-        </p>
+      <section className="relative overflow-hidden">
+        {/* Foto de fondo: planta de tratamiento, ya viene con un degradado
+            propio hacia claro en el lado izquierdo. */}
+        <div
+          className="absolute inset-0 bg-cover bg-[right_center] lg:bg-center"
+          style={{ backgroundImage: "url(/hero-planta.jpg)" }}
+          aria-hidden="true"
+        />
+        {/* Refuerzo del degradado hacia el color de fondo de la página, para
+            que el texto quede legible sin depender solo del fade de la
+            imagen, y para que funcione igual en modo claro y oscuro. */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(to right, var(--background) 0%, var(--background) 40%, color-mix(in srgb, var(--background) 35%, transparent) 65%, transparent 88%)",
+          }}
+          aria-hidden="true"
+        />
+        {/* Leve oscurecido general en modo oscuro, para que la foto no
+            desentone con el resto de la página. */}
+        <div
+          className="absolute inset-0 bg-black/0 dark:bg-black/35"
+          aria-hidden="true"
+        />
 
-        {!cargando && (industrias.length > 0 || municipios.length > 0) && (
-          <div className="mt-6 flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-neutral-500">Cobertura hoy:</span>
-            {industrias.map((i) => (
-              <span
-                key={i.id}
-                className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
-              >
-                {i.nombre}
+        <div className="relative mx-auto max-w-5xl px-6 py-24 lg:py-32">
+          <p className="mb-3 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            Gestión ambiental de residuos industriales
+          </p>
+          <h1 className="max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">
+            De normativa dispersa a un checklist claro de qué le aplica a tu
+            empresa.
+          </h1>
+          <p className="mt-6 max-w-2xl text-lg text-neutral-600 dark:text-neutral-300">
+            Cargá los datos de tu establecimiento y la herramienta cruza
+            automáticamente la normativa nacional, provincial y municipal (y
+            de autoridades de cuenca, cuando corresponde) sobre residuos,
+            efluentes y emisiones, para decirte exactamente qué trámites
+            necesitás y ante qué organismo.
+          </p>
+
+          {!cargando && (industrias.length > 0 || municipios.length > 0) && (
+            <div className="mt-6 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-neutral-500 dark:text-neutral-400">
+                Cobertura hoy:
               </span>
-            ))}
-            {municipios.map((m) => (
-              <span
-                key={m.id}
-                className="rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
-              >
-                {m.nombre}
+              {industrias.map((i) => (
+                <span
+                  key={i.id}
+                  className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
+                >
+                  {i.nombre}
+                </span>
+              ))}
+              {municipios.map((m) => (
+                <span
+                  key={m.id}
+                  className="rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-600 dark:bg-neutral-800/70 dark:text-neutral-300"
+                >
+                  {m.nombre}
+                </span>
+              ))}
+              <span className="text-xs text-neutral-400">
+                — sumamos rubros y municipios de forma continua.
               </span>
-            ))}
-            <span className="text-xs text-neutral-400">
-              — sumamos rubros y municipios de forma continua.
-            </span>
+            </div>
+          )}
+
+          <div className="mt-8 flex flex-wrap gap-4">
+            <Link
+              href="/login?modo=registro"
+              className="rounded-md bg-emerald-600 px-5 py-3 text-sm font-medium text-white hover:bg-emerald-700"
+            >
+              Registrar mi empresa
+            </Link>
+            <Link
+              href="/login"
+              className="rounded-md border border-neutral-300 bg-white/70 px-5 py-3 text-sm font-medium backdrop-blur-sm hover:bg-white dark:border-neutral-600 dark:bg-neutral-900/60 dark:hover:bg-neutral-900"
+            >
+              Ya tengo cuenta
+            </Link>
           </div>
-        )}
-
-        <div className="mt-8 flex flex-wrap gap-4">
-          <Link
-            href="/login?modo=registro"
-            className="rounded-md bg-emerald-600 px-5 py-3 text-sm font-medium text-white hover:bg-emerald-700"
-          >
-            Registrar mi empresa
-          </Link>
-          <Link
-            href="/login"
-            className="rounded-md border border-neutral-300 px-5 py-3 text-sm font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-900"
-          >
-            Ya tengo cuenta
-          </Link>
         </div>
       </section>
 
