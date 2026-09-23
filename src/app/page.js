@@ -5,6 +5,27 @@ import Link from "next/link";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+const PASOS = [
+  {
+    numero: "1",
+    titulo: "Describí tu establecimiento",
+    detalle:
+      "Rubro, municipio, procesos productivos y algunas preguntas sobre residuos, efluentes y emisiones.",
+  },
+  {
+    numero: "2",
+    titulo: "Revisá las obligaciones y su fundamento",
+    detalle:
+      "La herramienta cruza tus respuestas contra la normativa cargada y te arma un checklist, cada ítem con la norma y el organismo detrás.",
+  },
+  {
+    numero: "3",
+    titulo: "Organizá las gestiones",
+    detalle:
+      "Marcá el estado de cada trámite, cargá fechas de obtención y vencimiento, y recibí avisos cuando se acerque un vencimiento.",
+  },
+];
+
 const TEMAS = [
   {
     titulo: "Residuos peligrosos",
@@ -66,8 +87,34 @@ export default function Home() {
           automáticamente la normativa nacional, provincial y municipal (y de
           autoridades de cuenca, cuando corresponde) sobre residuos,
           efluentes y emisiones, para decirte exactamente qué trámites
-          necesitás y ante qué organismo — sea cual sea tu rubro y tu zona.
+          necesitás y ante qué organismo.
         </p>
+
+        {!cargando && (industrias.length > 0 || municipios.length > 0) && (
+          <div className="mt-6 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-neutral-500">Cobertura hoy:</span>
+            {industrias.map((i) => (
+              <span
+                key={i.id}
+                className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+              >
+                {i.nombre}
+              </span>
+            ))}
+            {municipios.map((m) => (
+              <span
+                key={m.id}
+                className="rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
+              >
+                {m.nombre}
+              </span>
+            ))}
+            <span className="text-xs text-neutral-400">
+              — sumamos rubros y municipios de forma continua.
+            </span>
+          </div>
+        )}
+
         <div className="mt-8 flex flex-wrap gap-4">
           <Link
             href="/login?modo=registro"
@@ -82,42 +129,25 @@ export default function Home() {
             Ya tengo cuenta
           </Link>
         </div>
+      </section>
 
-        {!cargando && (industrias.length > 0 || municipios.length > 0) && (
-          <div className="mt-12 rounded-lg border border-black/10 bg-neutral-50 p-5 dark:border-white/10 dark:bg-neutral-900">
-            <p className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
-              Cobertura actual
-            </p>
-            {industrias.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {industrias.map((i) => (
-                  <span
-                    key={i.id}
-                    className="rounded-full bg-white px-3 py-1 text-xs font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
-                  >
-                    {i.nombre}
-                  </span>
-                ))}
+      <section className="border-t border-black/10 px-6 py-16 dark:border-white/10">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="text-xl font-semibold">Cómo funciona</h2>
+          <div className="mt-8 grid gap-8 sm:grid-cols-3">
+            {PASOS.map((p) => (
+              <div key={p.numero}>
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-sm font-semibold text-white">
+                  {p.numero}
+                </span>
+                <h3 className="mt-3 font-medium">{p.titulo}</h3>
+                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                  {p.detalle}
+                </p>
               </div>
-            )}
-            {municipios.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {municipios.map((m) => (
-                  <span
-                    key={m.id}
-                    className="rounded-full bg-white px-3 py-1 text-xs text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
-                  >
-                    {m.nombre}
-                  </span>
-                ))}
-              </div>
-            )}
-            <p className="mt-3 text-xs text-neutral-500">
-              Sumamos rubros y municipios nuevos de forma continua — si el
-              tuyo todavía no está, escribinos.
-            </p>
+            ))}
           </div>
-        )}
+        </div>
       </section>
 
       <section className="border-t border-black/10 bg-neutral-50 px-6 py-16 dark:border-white/10 dark:bg-neutral-900">
@@ -142,6 +172,11 @@ export default function Home() {
             Herramienta con una arquitectura pensada para escalar a
             cualquier municipio y rubro industrial: cada nueva jurisdicción o
             industria se suma como datos, sin reescribir la aplicación.
+          </p>
+          <p className="mt-3 max-w-2xl text-xs text-neutral-400">
+            Esta herramienta orienta sobre qué normativa suele aplicar según
+            los datos cargados; no reemplaza el asesoramiento de un
+            profesional ni constituye una certificación de cumplimiento.
           </p>
         </div>
       </section>

@@ -65,8 +65,27 @@ export default function DetalleEstablecimiento({ params }) {
         })
       );
 
+      const normativaIds = Array.from(
+        new Set(
+          Array.from(tramitesMap.values()).flatMap((t) => t.normativas_ref || [])
+        )
+      );
+      const normativasMap = new Map();
+      await Promise.all(
+        normativaIds.map(async (nid) => {
+          const s = await getDoc(doc(db, "normativas", nid));
+          if (s.exists()) normativasMap.set(nid, { id: s.id, ...s.data() });
+        })
+      );
+
       const armado = cumplimientos
-        .map((c) => ({ cumplimiento: c, tramite: tramitesMap.get(c.tramite_ref) }))
+        .map((c) => {
+          const tramite = tramitesMap.get(c.tramite_ref);
+          const normativas = (tramite?.normativas_ref || [])
+            .map((nid) => normativasMap.get(nid))
+            .filter(Boolean);
+          return { cumplimiento: c, tramite, normativas };
+        })
         .filter((x) => x.tramite && x.cumplimiento.estado !== "no aplica");
 
       setItems(armado);
@@ -116,7 +135,7 @@ export default function DetalleEstablecimiento({ params }) {
 
       <h2 className="mt-8 mb-4 text-lg font-semibold">Checklist de cumplimiento</h2>
       <div className="space-y-3">
-        {items.map(({ cumplimiento, tramite }) => (
+        {items.map(({ cumplimiento, tramite, normativas }) => (
           <div
             key={cumplimiento.id}
             className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
@@ -155,6 +174,28 @@ export default function DetalleEstablecimiento({ params }) {
                 })()}
               </div>
             </div>
+            {normativas?.length > 0 && (
+              <p className="mt-2 flex flex-wrap items-center gap-x-1 text-xs text-neutral-500">
+                <span>Base legal:</span>
+                {normativas.map((n, i) => (
+                  <span key={n.id}>
+                    {n.url_fuente ? (
+                      <a
+                        href={n.url_fuente}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-emerald-600 hover:underline"
+                      >
+                        {n.tipo} {n.numero}
+                      </a>
+                    ) : (
+                      `${n.tipo} ${n.numero}`
+                    )}
+                    {i < normativas.length - 1 ? "," : ""}
+                  </span>
+                ))}
+              </p>
+            )}
             {tramite.requisitos?.length > 0 && (
               <ul className="mt-3 space-y-3 border-t border-neutral-100 pt-3 text-sm dark:border-neutral-900">
                 {tramite.requisitos.map((r, i) => {

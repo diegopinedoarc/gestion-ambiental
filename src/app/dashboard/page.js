@@ -219,11 +219,25 @@ export default function DashboardPage() {
               </p>
 
               {normativas.length > 0 && (
-                <p className="mt-2 text-xs text-neutral-500">
-                  Base legal:{" "}
-                  {normativas
-                    .map((n) => `${n.tipo} ${n.numero}`)
-                    .join(", ")}
+                <p className="mt-2 flex flex-wrap items-center gap-x-1 text-xs text-neutral-500">
+                  <span>Base legal:</span>
+                  {normativas.map((n, i) => (
+                    <span key={n.id}>
+                      {n.url_fuente ? (
+                        <a
+                          href={n.url_fuente}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-emerald-600 hover:underline"
+                        >
+                          {n.tipo} {n.numero}
+                        </a>
+                      ) : (
+                        `${n.tipo} ${n.numero}`
+                      )}
+                      {i < normativas.length - 1 ? "," : ""}
+                    </span>
+                  ))}
                 </p>
               )}
 
