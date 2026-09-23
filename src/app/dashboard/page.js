@@ -17,20 +17,44 @@ import { alertaVencimiento, sugerirVencimiento } from "@/lib/vencimientos";
 
 const ESTADOS = ["pendiente", "en trámite", "vigente", "vencido", "no aplica"];
 
+// Ámbar suave con texto oscuro; el rojo queda reservado para alertas reales
+// (vencido / vence pronto), no como color decorativo.
 const ESTADO_COLOR = {
-  pendiente: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  "en trámite": "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-  vigente: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-  vencido: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  pendiente: "bg-amber-50 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200",
+  "en trámite": "bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200",
+  vigente: "bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200",
+  vencido: "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200",
   "no aplica": "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
 };
+
+const FILTROS = [
+  { id: "todos", label: "Todos" },
+  { id: "accion", label: "Requieren acción" },
+  { id: "en_tramite", label: "En trámite" },
+  { id: "vigentes", label: "Vigentes" },
+];
+
+function prioridad(item) {
+  const alerta = alertaVencimiento(item.cumplimiento.fecha_vencimiento);
+  if (item.cumplimiento.estado === "vencido" || alerta?.tono === "vencido") return 0;
+  if (alerta?.tono === "porVencer") return 1;
+  if (item.cumplimiento.estado === "pendiente") return 2;
+  if (item.cumplimiento.estado === "en trámite") return 3;
+  return 4; // vigente
+}
 
 export default function DashboardPage() {
   const { user, perfil, loading } = useAuth();
   const router = useRouter();
   const [establecimiento, setEstablecimiento] = useState(null);
   const [items, setItems] = useState([]); // { cumplimiento, tramite, normativas }
+  const [temasPorId, setTemasPorId] = useState(new Map());
   const [cargando, setCargando] = useState(true);
+
+  const [filtro, setFiltro] = useState("todos");
+  const [busqueda, setBusqueda] = useState("");
+  const [orden, setOrden] = useState("prioridad"); // "prioridad" | "vencimiento"
+  const [expandidoId, setExpandidoId] = useState(null);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -49,12 +73,17 @@ export default function DashboardPage() {
       );
       setEstablecimiento(estSnap.exists() ? { id: estSnap.id, ...estSnap.data() } : null);
 
-      const cumplQ = query(
-        collection(db, "cumplimiento"),
-        where("establecimiento_ref", "==", perfil.establecimiento_ref)
-      );
-      const cumplSnap = await getDocs(cumplQ);
+      const [cumplSnap, temasSnap] = await Promise.all([
+        getDocs(
+          query(
+            collection(db, "cumplimiento"),
+            where("establecimiento_ref", "==", perfil.establecimiento_ref)
+          )
+        ),
+        getDocs(collection(db, "temas_ambientales")),
+      ]);
       const cumplimientos = cumplSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setTemasPorId(new Map(temasSnap.docs.map((d) => [d.id, d.data()])));
 
       const tramiteIds = Array.from(new Set(cumplimientos.map((c) => c.tramite_ref)));
       const tramitesMap = new Map();
@@ -135,8 +164,12 @@ export default function DashboardPage() {
     );
   }
 
+  const activos = useMemo(
+    () => items.filter((i) => i.cumplimiento.estado !== "no aplica"),
+    [items]
+  );
+
   const resumen = useMemo(() => {
-    const activos = items.filter((i) => i.cumplimiento.estado !== "no aplica");
     const conteo = { pendiente: 0, "en trámite": 0, vigente: 0, vencido: 0 };
     let vencenPronto = 0;
     let vencidos = 0;
@@ -146,204 +179,426 @@ export default function DashboardPage() {
       if (alerta?.tono === "porVencer") vencenPronto++;
       if (alerta?.tono === "vencido") vencidos++;
     });
-    return { total: activos.length, ...conteo, vencenPronto, vencidos };
-  }, [items]);
+    const requierenAccion = activos.length - conteo.vigente;
+    return { total: activos.length, ...conteo, vencenPronto, vencidos, requierenAccion };
+  }, [activos]);
+
+  const visibles = useMemo(() => {
+    let lista = activos;
+
+    if (filtro === "accion") {
+      lista = lista.filter((i) => i.cumplimiento.estado !== "vigente");
+    } else if (filtro === "en_tramite") {
+      lista = lista.filter((i) => i.cumplimiento.estado === "en trámite");
+    } else if (filtro === "vigentes") {
+      lista = lista.filter((i) => i.cumplimiento.estado === "vigente");
+    }
+
+    if (busqueda.trim()) {
+      const q = busqueda.trim().toLowerCase();
+      lista = lista.filter(
+        (i) =>
+          i.tramite.nombre?.toLowerCase().includes(q) ||
+          i.tramite.organismo?.toLowerCase().includes(q)
+      );
+    }
+
+    lista = [...lista].sort((a, b) => {
+      if (orden === "vencimiento") {
+        const fa = a.cumplimiento.fecha_vencimiento;
+        const fb = b.cumplimiento.fecha_vencimiento;
+        if (!fa && !fb) return prioridad(a) - prioridad(b);
+        if (!fa) return 1;
+        if (!fb) return -1;
+        return fa.localeCompare(fb);
+      }
+      return prioridad(a) - prioridad(b);
+    });
+
+    return lista;
+  }, [activos, filtro, busqueda, orden]);
 
   if (loading || cargando) {
-    return <div className="mx-auto max-w-5xl px-6 py-16 text-sm text-neutral-500">Cargando...</div>;
+    return (
+      <div
+        className="min-h-[calc(100vh-57px)]"
+        style={{ background: "#F5F7F3" }}
+      >
+        <div className="mx-auto max-w-5xl px-6 py-16 text-sm text-neutral-500">
+          Cargando...
+        </div>
+      </div>
+    );
   }
 
   if (!establecimiento) return null;
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-12">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{establecimiento.nombre}</h1>
-          <p className="text-sm text-neutral-500">
-            {establecimiento.direccion} · CUIT {establecimiento.cuit || "—"}
-          </p>
+    <div className="min-h-[calc(100vh-57px)]" style={{ background: "#F5F7F3" }}>
+      <div className="mx-auto max-w-5xl px-6 py-12">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold" style={{ color: "#173A34" }}>
+              {establecimiento.nombre}
+            </h1>
+            <p className="text-sm" style={{ color: "#587168" }}>
+              {establecimiento.direccion} · CUIT {establecimiento.cuit || "—"}
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <Tarjeta titulo="Trámites aplicables" valor={resumen.total} />
-        <Tarjeta titulo="Pendientes" valor={resumen.pendiente} tono="amber" />
-        <Tarjeta titulo="En trámite" valor={resumen["en trámite"]} tono="blue" />
-        <Tarjeta titulo="Vigentes" valor={resumen.vigente} tono="emerald" />
-        <Tarjeta titulo="Vencen pronto" valor={resumen.vencenPronto} tono="amber" />
-        <Tarjeta titulo="Vencidos" valor={resumen.vencidos} tono="red" />
-      </div>
+        <Resumen resumen={resumen} />
 
-      <h2 className="mt-10 mb-4 text-lg font-semibold">Checklist de cumplimiento</h2>
-
-      <div className="space-y-4">
-        {items
-          .filter((i) => i.cumplimiento.estado !== "no aplica")
-          .map(({ cumplimiento, tramite, normativas }) => (
-            <div
-              key={cumplimiento.id}
-              className="rounded-lg border border-neutral-200 p-5 dark:border-neutral-800"
+        <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            {FILTROS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFiltro(f.id)}
+                className="rounded-full px-3 py-1.5 text-sm font-medium transition"
+                style={
+                  filtro === f.id
+                    ? { background: "#173A34", color: "#fff" }
+                    : { background: "#fff", color: "#587168", border: "1px solid #DDE6DF" }
+                }
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Buscar trámite u organismo..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="rounded-md px-3 py-1.5 text-sm"
+              style={{ border: "1px solid #DDE6DF", background: "#fff", color: "#173A34" }}
+            />
+            <select
+              value={orden}
+              onChange={(e) => setOrden(e.target.value)}
+              className="rounded-md px-3 py-1.5 text-sm"
+              style={{ border: "1px solid #DDE6DF", background: "#fff", color: "#173A34" }}
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-medium">{tramite.nombre}</h3>
-                  <p className="mt-1 text-sm text-neutral-500">
-                    {tramite.organismo} · {tramite.periodicidad}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${ESTADO_COLOR[cumplimiento.estado]}`}
-                  >
-                    {cumplimiento.estado}
-                  </span>
-                  {(() => {
-                    const alerta = alertaVencimiento(cumplimiento.fecha_vencimiento);
-                    if (!alerta) return null;
-                    const tonoClase =
-                      alerta.tono === "vencido"
-                        ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
-                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
-                    return (
-                      <span className={`rounded-full px-3 py-1 text-xs font-medium ${tonoClase}`}>
-                        ⚠ {alerta.texto}
-                      </span>
-                    );
-                  })()}
-                </div>
-              </div>
+              <option value="prioridad">Ordenar por prioridad</option>
+              <option value="vencimiento">Ordenar por vencimiento</option>
+            </select>
+          </div>
+        </div>
 
-              <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-400">
-                {tramite.descripcion}
-              </p>
-
-              {normativas.length > 0 && (
-                <p className="mt-2 flex flex-wrap items-center gap-x-1 text-xs text-neutral-500">
-                  <span>Base legal:</span>
-                  {normativas.map((n, i) => (
-                    <span key={n.id}>
-                      {n.url_fuente ? (
-                        <a
-                          href={n.url_fuente}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-emerald-600 hover:underline"
-                        >
-                          {n.tipo} {n.numero}
-                        </a>
-                      ) : (
-                        `${n.tipo} ${n.numero}`
-                      )}
-                      {i < normativas.length - 1 ? "," : ""}
-                    </span>
-                  ))}
-                </p>
-              )}
-
-              {tramite.requisitos?.length > 0 && (
-                <div className="mt-4 rounded-md bg-neutral-50 p-3 dark:bg-neutral-900/60">
-                  <p className="text-xs font-medium text-neutral-500">
-                    Qué tenés que hacer para cumplir
-                  </p>
-                  <ul className="mt-3 space-y-3 text-sm">
-                    {tramite.requisitos.map((r, i) => {
-                      const req = typeof r === "string" ? { tarea: r } : r;
-                      return (
-                        <li key={i} className="flex gap-2">
-                          <span className="mt-0.5 text-neutral-400">•</span>
-                          <div>
-                            <p className="font-medium">{req.tarea}</p>
-                            {req.detalle && (
-                              <p className="mt-0.5 text-neutral-600 dark:text-neutral-400">
-                                {req.detalle}
-                              </p>
-                            )}
-                            {(req.plazo || req.link) && (
-                              <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
-                                {req.plazo && <span>⏱ {req.plazo}</span>}
-                                {req.link && (
-                                  <a
-                                    href={req.link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-emerald-600 hover:underline"
-                                  >
-                                    Ver más ↗
-                                  </a>
-                                )}
-                              </p>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-
-              <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-neutral-100 pt-4 text-sm dark:border-neutral-900">
-                <label className="flex items-center gap-2">
-                  Estado:
-                  <select
-                    className="rounded-md border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
-                    value={cumplimiento.estado}
-                    onChange={(e) => cambiarEstado(cumplimiento.id, e.target.value)}
-                  >
-                    {ESTADOS.map((e) => (
-                      <option key={e} value={e}>
-                        {e}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-center gap-2">
-                  Obtenido:
-                  <input
-                    type="date"
-                    className="rounded-md border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
-                    value={cumplimiento.fecha_obtencion || ""}
-                    onChange={(e) =>
-                      cambiarFecha(cumplimiento.id, "fecha_obtencion", e.target.value)
-                    }
-                  />
-                </label>
-                <label className="flex items-center gap-2">
-                  Vencimiento:
-                  <input
-                    type="date"
-                    className="rounded-md border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
-                    value={cumplimiento.fecha_vencimiento || ""}
-                    onChange={(e) =>
-                      cambiarFecha(cumplimiento.id, "fecha_vencimiento", e.target.value)
-                    }
-                  />
-                </label>
-              </div>
-              <p className="mt-1 text-xs text-neutral-400">
-                La fecha de vencimiento se sugiere sola al marcar el trámite como
-                &ldquo;vigente&rdquo;, tomando la periodicidad del trámite — corregila si el
-                organismo te dio un plazo distinto.
-              </p>
-            </div>
+        <div className="mt-4 space-y-3">
+          {visibles.map((item) => (
+            <FilaTramite
+              key={item.cumplimiento.id}
+              item={item}
+              temaNombre={temasPorId.get(item.tramite.tema_ref)?.nombre}
+              expandido={expandidoId === item.cumplimiento.id}
+              onToggle={() =>
+                setExpandidoId((prev) =>
+                  prev === item.cumplimiento.id ? null : item.cumplimiento.id
+                )
+              }
+              onCambiarEstado={cambiarEstado}
+              onCambiarFecha={cambiarFecha}
+            />
           ))}
+          {visibles.length === 0 && (
+            <p className="py-8 text-center text-sm" style={{ color: "#587168" }}>
+              No hay trámites que coincidan con este filtro o búsqueda.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-const TONO_TEXTO = {
-  amber: "text-amber-600 dark:text-amber-400",
-  blue: "text-blue-600 dark:text-blue-400",
-  emerald: "text-emerald-600 dark:text-emerald-400",
-  red: "text-red-600 dark:text-red-400",
-};
+function Resumen({ resumen }) {
+  const total = resumen.total || 0;
+  const pct = (n) => (total > 0 ? Math.round((n / total) * 100) : 0);
 
-function Tarjeta({ titulo, valor, tono }) {
   return (
-    <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-      <p className="text-xs text-neutral-500">{titulo}</p>
-      <p className={`mt-1 text-2xl font-semibold ${TONO_TEXTO[tono] || ""}`}>{valor}</p>
+    <div className="mt-8 grid gap-4 sm:grid-cols-[1.2fr_1fr]">
+      {/* Tarjeta principal: cuántos trámites aplican y cuántos requieren acción */}
+      <div className="rounded-lg p-5" style={{ background: "#fff", border: "1px solid #DDE6DF" }}>
+        <p className="text-sm" style={{ color: "#587168" }}>
+          Trámites aplicables
+        </p>
+        <div className="mt-1 flex items-baseline gap-3">
+          <span className="text-3xl font-semibold" style={{ color: "#173A34" }}>
+            {total}
+          </span>
+          {resumen.requierenAccion > 0 && (
+            <span className="text-sm font-medium" style={{ color: "#b45309" }}>
+              {resumen.requierenAccion} requieren acción
+            </span>
+          )}
+        </div>
+
+        {/* Barra de progreso: pendiente / en trámite / vigente */}
+        {total > 0 && (
+          <div className="mt-4">
+            <div className="flex h-2 w-full overflow-hidden rounded-full" style={{ background: "#EEF2EE" }}>
+              {resumen.pendiente > 0 && (
+                <div style={{ width: `${pct(resumen.pendiente)}%`, background: "#f0b429" }} />
+              )}
+              {resumen["en trámite"] > 0 && (
+                <div style={{ width: `${pct(resumen["en trámite"])}%`, background: "#3b82f6" }} />
+              )}
+              {resumen.vigente > 0 && (
+                <div style={{ width: `${pct(resumen.vigente)}%`, background: "#087E69" }} />
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: "#587168" }}>
+              <span>{resumen.pendiente} pendientes</span>
+              <span>{resumen["en trámite"]} en trámite</span>
+              <span>{resumen.vigente} vigentes</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Indicadores secundarios: solo destacan si son distintos de cero */}
+      <div className="grid grid-cols-2 gap-4">
+        <IndicadorSecundario
+          titulo="Vencen pronto"
+          valor={resumen.vencenPronto}
+          activo={resumen.vencenPronto > 0}
+          color="#b45309"
+        />
+        <IndicadorSecundario
+          titulo="Vencidos"
+          valor={resumen.vencidos}
+          activo={resumen.vencidos > 0}
+          color="#b91c1c"
+        />
+      </div>
+    </div>
+  );
+}
+
+function IndicadorSecundario({ titulo, valor, activo, color }) {
+  return (
+    <div
+      className="rounded-lg p-4"
+      style={{
+        background: "#fff",
+        border: activo ? `1px solid ${color}40` : "1px solid #DDE6DF",
+      }}
+    >
+      <p className="text-xs" style={{ color: "#587168" }}>
+        {titulo}
+      </p>
+      <p
+        className="mt-1 text-2xl font-semibold"
+        style={{ color: activo ? color : "#9ba8a2" }}
+      >
+        {valor}
+      </p>
+    </div>
+  );
+}
+
+function FilaTramite({ item, temaNombre, expandido, onToggle, onCambiarEstado, onCambiarFecha }) {
+  const { cumplimiento, tramite, normativas } = item;
+  const alerta = alertaVencimiento(cumplimiento.fecha_vencimiento);
+  const primerRequisito = tramite.requisitos?.[0];
+  const primerRequisitoTarea =
+    typeof primerRequisito === "string" ? primerRequisito : primerRequisito?.tarea;
+
+  return (
+    <div className="rounded-lg" style={{ background: "#fff", border: "1px solid #DDE6DF" }}>
+      <button
+        onClick={onToggle}
+        className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-4 text-left"
+      >
+        <div className="min-w-0">
+          <h3 className="font-medium" style={{ color: "#173A34" }}>
+            {tramite.nombre}
+          </h3>
+          <p className="mt-0.5 text-sm" style={{ color: "#587168" }}>
+            {temaNombre || tramite.tema_ref} · {tramite.organismo}
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${ESTADO_COLOR[cumplimiento.estado]}`}
+            >
+              {cumplimiento.estado}
+            </span>
+            {cumplimiento.estado !== "vigente" && primerRequisitoTarea && (
+              <span style={{ color: "#587168" }}>Requiere: {primerRequisitoTarea}</span>
+            )}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {alerta && (
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                alerta.tono === "vencido"
+                  ? "bg-red-100 text-red-800"
+                  : "bg-amber-100 text-amber-900"
+              }`}
+            >
+              ⚠ {alerta.texto}
+            </span>
+          )}
+          <span
+            className="rounded-md px-3 py-1.5 text-sm font-medium"
+            style={{ color: "#087E69" }}
+          >
+            {expandido ? "Ocultar ▴" : "Ver requisitos ▾"}
+          </span>
+        </div>
+      </button>
+
+      {expandido && (
+        <div
+          className="grid gap-6 border-t px-5 py-5 sm:grid-cols-2"
+          style={{ borderColor: "#EEF2EE" }}
+        >
+          {/* Área 1: qué hacer */}
+          <div>
+            <p className="text-xs font-medium tracking-wide uppercase" style={{ color: "#587168" }}>
+              Requisitos
+            </p>
+            <p className="mt-2 text-sm" style={{ color: "#40544c" }}>
+              {tramite.descripcion}
+            </p>
+
+            {normativas.length > 0 && (
+              <p className="mt-2 flex flex-wrap items-center gap-x-1 text-xs" style={{ color: "#587168" }}>
+                <span>Base legal:</span>
+                {normativas.map((n, i) => (
+                  <span key={n.id}>
+                    {n.url_fuente ? (
+                      <a
+                        href={n.url_fuente}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                        style={{ color: "#087E69" }}
+                      >
+                        {n.tipo} {n.numero}
+                      </a>
+                    ) : (
+                      `${n.tipo} ${n.numero}`
+                    )}
+                    {i < normativas.length - 1 ? "," : ""}
+                  </span>
+                ))}
+              </p>
+            )}
+
+            {tramite.requisitos?.length > 0 && (
+              <ol className="mt-4 space-y-3 text-sm">
+                {tramite.requisitos.map((r, i) => {
+                  const req = typeof r === "string" ? { tarea: r } : r;
+                  return (
+                    <li key={i} className="flex gap-2">
+                      <span
+                        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-medium"
+                        style={{ background: "#EEF2EE", color: "#173A34" }}
+                      >
+                        {i + 1}
+                      </span>
+                      <div>
+                        <p className="font-medium" style={{ color: "#173A34" }}>
+                          {req.tarea}
+                        </p>
+                        {req.detalle && (
+                          <p className="mt-0.5" style={{ color: "#587168" }}>
+                            {req.detalle}
+                          </p>
+                        )}
+                        {(req.plazo || req.link) && (
+                          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" style={{ color: "#8a978f" }}>
+                            {req.plazo && <span>⏱ {req.plazo}</span>}
+                            {req.link && (
+                              <a
+                                href={req.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:underline"
+                                style={{ color: "#087E69" }}
+                              >
+                                Ver más ↗
+                              </a>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+
+          {/* Área 2: gestionar */}
+          <div>
+            <p className="text-xs font-medium tracking-wide uppercase" style={{ color: "#587168" }}>
+              Seguimiento
+            </p>
+            <div className="mt-3 space-y-4">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium" style={{ color: "#173A34" }}>
+                  Estado
+                </span>
+                <select
+                  className="w-full rounded-md px-3 py-2"
+                  style={{ border: "1px solid #DDE6DF" }}
+                  value={cumplimiento.estado}
+                  onChange={(e) => onCambiarEstado(cumplimiento.id, e.target.value)}
+                >
+                  {ESTADOS.map((e) => (
+                    <option key={e} value={e}>
+                      {e}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium" style={{ color: "#173A34" }}>
+                    Obtenido
+                  </span>
+                  <input
+                    type="date"
+                    className="w-full rounded-md px-3 py-2"
+                    style={{ border: "1px solid #DDE6DF" }}
+                    value={cumplimiento.fecha_obtencion || ""}
+                    onChange={(e) =>
+                      onCambiarFecha(cumplimiento.id, "fecha_obtencion", e.target.value)
+                    }
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium" style={{ color: "#173A34" }}>
+                    Vencimiento
+                  </span>
+                  <input
+                    type="date"
+                    className="w-full rounded-md px-3 py-2"
+                    style={{ border: "1px solid #DDE6DF" }}
+                    value={cumplimiento.fecha_vencimiento || ""}
+                    onChange={(e) =>
+                      onCambiarFecha(cumplimiento.id, "fecha_vencimiento", e.target.value)
+                    }
+                  />
+                </label>
+              </div>
+              <p className="text-xs" style={{ color: "#8a978f" }}>
+                Se sugiere sola al marcar el trámite como &ldquo;vigente&rdquo;, según la
+                periodicidad del trámite — corregila si el organismo te dio otro
+                plazo.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
