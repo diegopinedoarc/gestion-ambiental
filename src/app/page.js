@@ -160,17 +160,31 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="border-t border-black/10 px-6 py-16 dark:border-white/10">
+      {/* Cómo funciona — fondo verde petróleo oscuro, contraste fuerte con
+          la sección clara que sigue para dar ritmo a la página. */}
+      <section
+        className="px-6 py-16 sm:py-20"
+        style={{ background: "#142B27" }}
+      >
         <div className="mx-auto max-w-5xl">
-          <h2 className="text-xl font-semibold">Cómo funciona</h2>
-          <div className="mt-8 grid gap-8 sm:grid-cols-3">
+          <h2 className="text-xl font-semibold text-white">Cómo funciona</h2>
+          <div className="relative mt-12 grid gap-10 sm:grid-cols-3">
+            {/* Línea fina que conecta los tres pasos (solo desde sm hacia arriba) */}
+            <div
+              className="absolute top-4 right-0 left-0 hidden h-px sm:block"
+              style={{ background: "rgba(148, 189, 168, 0.35)" }}
+              aria-hidden="true"
+            />
             {PASOS.map((p) => (
-              <div key={p.numero}>
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-sm font-semibold text-white">
+              <div key={p.numero} className="relative">
+                <span
+                  className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold"
+                  style={{ background: "#8FBBA2", color: "#12271f" }}
+                >
                   {p.numero}
                 </span>
-                <h3 className="mt-3 font-medium">{p.titulo}</h3>
-                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                <h3 className="mt-3 font-medium text-white">{p.titulo}</h3>
+                <p className="mt-1 text-sm" style={{ color: "#B7CBC2" }}>
                   {p.detalle}
                 </p>
               </div>
@@ -179,34 +193,75 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="border-t border-black/10 bg-neutral-50 px-6 py-16 dark:border-white/10 dark:bg-neutral-900">
+      {/* Ejes normativos — fondo marfil claro, tarjetas blancas con borde
+          suave. El salto de luminosidad respecto de la sección anterior es
+          intencional. */}
+      <section className="px-6 py-16 sm:py-20" style={{ background: "#F5F7F2" }}>
         <div className="mx-auto max-w-5xl">
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-xl font-semibold" style={{ color: "#1c211f" }}>
             Ejes normativos que cubrimos hoy
           </h2>
           <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {TEMAS.map((t) => (
               <div
                 key={t.titulo}
-                className="rounded-lg border border-black/10 bg-white p-5 dark:border-white/10 dark:bg-neutral-950"
+                className="rounded-lg bg-white p-5"
+                style={{ border: "1px solid #DDE6DD" }}
               >
-                <h3 className="font-medium">{t.titulo}</h3>
-                <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                <h3 className="font-medium" style={{ color: "#1c211f" }}>
+                  {t.titulo}
+                </h3>
+                <p className="mt-2 text-sm" style={{ color: "#5b6b62" }}>
                   {t.detalle}
                 </p>
               </div>
             ))}
           </div>
-          <p className="mt-8 max-w-2xl text-sm text-neutral-500">
+          <p className="mt-8 max-w-2xl text-sm" style={{ color: "#5b6b62" }}>
             Herramienta con una arquitectura pensada para escalar a
             cualquier municipio y rubro industrial: cada nueva jurisdicción o
             industria se suma como datos, sin reescribir la aplicación.
           </p>
-          <p className="mt-3 max-w-2xl text-xs text-neutral-400">
+          <p className="mt-3 max-w-2xl text-xs" style={{ color: "#8a978f" }}>
             Esta herramienta orienta sobre qué normativa suele aplicar según
             los datos cargados; no reemplaza el asesoramiento de un
             profesional ni constituye una certificación de cumplimiento.
           </p>
+        </div>
+      </section>
+
+      {/* CTA final — verde profundo, textura topográfica muy tenue en una
+          esquina (recortada de la misma foto del hero, sin repetirla como
+          imagen protagonista). */}
+      <section
+        className="relative overflow-hidden px-6 py-16 sm:py-20"
+        style={{ background: "#103B32" }}
+      >
+        <div
+          className="pointer-events-none absolute -top-10 -right-10 h-72 w-72 opacity-[0.045]"
+          style={{
+            backgroundImage: "url(/topo-texture.jpg)",
+            backgroundSize: "cover",
+          }}
+          aria-hidden="true"
+        />
+        <div className="relative mx-auto max-w-5xl text-center">
+          <h2 className="text-2xl font-semibold text-white sm:text-3xl">
+            Sabé exactamente qué le exige la normativa a tu empresa.
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm" style={{ color: "#B7CBC2" }}>
+            Registrá tu establecimiento y en minutos tenés el checklist de
+            trámites que te corresponden, con su fundamento legal.
+          </p>
+          <div className="mt-7">
+            <Link
+              href="/login?modo=registro"
+              className="inline-block rounded-md bg-white px-6 py-3 text-sm font-medium hover:bg-neutral-100"
+              style={{ color: "#103B32" }}
+            >
+              Registrar mi empresa
+            </Link>
+          </div>
         </div>
       </section>
     </div>
