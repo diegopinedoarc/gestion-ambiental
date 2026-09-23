@@ -17,7 +17,7 @@ export default function Navbar() {
     <header className="border-b border-black/10 dark:border-white/10">
       <nav className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
         <Link href="/" className="font-semibold tracking-tight">
-          Normativa Ambiental <span className="text-emerald-600">Tigre</span>
+          Gestión <span className="text-emerald-600">Ambiental</span>
         </Link>
         <div className="flex items-center gap-4 text-sm">
           {!user && (

@@ -3,9 +3,9 @@ import { AuthProvider } from "@/lib/AuthContext";
 import Navbar from "@/components/Navbar";
 
 export const metadata = {
-  title: "Normativa Ambiental Tigre",
+  title: "Gestión Ambiental de Residuos Industriales",
   description:
-    "Herramienta para verificar normativa ambiental aplicable a industrias de Tigre, Buenos Aires.",
+    "Herramienta para verificar qué normativa ambiental (nacional, provincial y municipal) le aplica a tu empresa, y generar el checklist de trámites correspondiente.",
 };
 
 export default function RootLayout({ children }) {
