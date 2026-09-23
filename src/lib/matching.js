@@ -247,6 +247,13 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
       resultado: evaluacion.resultado,
       regla_id: regla?.id || null,
       version_regla: regla?.version || null,
+      // Copiados de la regla al momento de evaluar (no solo la referencia):
+      // así el panel "¿por qué aparece?" no depende de leer `reglas` de
+      // nuevo, y conserva el texto que estaba vigente en ese momento aunque
+      // la regla se edite después.
+      regla_descripcion: regla?.descripcion || null,
+      regla_articulos: regla?.articulos || null,
+      regla_norma_ref: regla?.norma_ref || null,
       datos_evaluados,
       condiciones_cumplidas: evaluacion.condiciones_cumplidas,
       condiciones_sin_respuesta: evaluacion.condiciones_sin_respuesta,

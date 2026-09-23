@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   collection,
   doc,
@@ -26,6 +27,37 @@ const ESTADO_COLOR = {
   vencido: "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200",
   "no aplica": "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
 };
+
+// Etiquetas legibles para los campos que pueden aparecer en `datos_evaluados`
+// (el snapshot que guarda cada regla al evaluarse).
+const CAMPO_LABELS = {
+  generaResiduosPeligrosos: "Genera residuos peligrosos",
+  generaResiduosEspeciales: "Genera residuos especiales",
+  vuelcaEfluentes: "Vuelca efluentes líquidos",
+  consumoAguaM3Dia: "Consumo de agua (m³/día)",
+  transporteInterprovincial: "Transporte fuera de la provincia",
+  jurisdiccionNacional: "Actividad bajo jurisdicción nacional",
+  tieneEmisionesGaseosas: "Tiene emisiones gaseosas",
+  tieneHabilitacionVigente: "Tiene habilitación vigente",
+  situacion: "Situación del establecimiento",
+};
+
+const RESULTADO_INFO = {
+  aplica: { texto: "Aplica", color: "#087E69" },
+  no_aplica: { texto: "No aplica", color: "#8a978f" },
+  requiere_revision: { texto: "Alcance por verificar", color: "#b45309" },
+};
+
+function formatearValorDato(valor) {
+  if (valor === null || valor === undefined || valor === "") return "Sin responder";
+  if (typeof valor === "boolean") return valor ? "Sí" : "No";
+  return String(valor);
+}
+
+function formatearFechaEvaluacion(ts) {
+  if (!ts || typeof ts.toDate !== "function") return null;
+  return ts.toDate().toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
+}
 
 const FILTROS = [
   { id: "todos", label: "Todos" },
@@ -245,6 +277,13 @@ export default function DashboardPage() {
               {establecimiento.direccion} · CUIT {establecimiento.cuit || "—"}
             </p>
           </div>
+          <Link
+            href="/dashboard/editar"
+            className="rounded-md px-4 py-2 text-sm font-medium"
+            style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
+          >
+            Editar datos del establecimiento
+          </Link>
         </div>
 
         <Resumen resumen={resumen} />
@@ -426,6 +465,14 @@ function FilaTramite({ item, temaNombre, expandido, onToggle, onCambiarEstado, o
             >
               {cumplimiento.estado}
             </span>
+            {cumplimiento.resultado === "requiere_revision" && (
+              <span
+                className="rounded-full px-2.5 py-0.5 text-xs font-medium"
+                style={{ background: "#FEF3E2", color: "#b45309" }}
+              >
+                ⚠ Alcance por verificar
+              </span>
+            )}
             {cumplimiento.estado !== "vigente" && primerRequisitoTarea && (
               <span style={{ color: "#587168" }}>Requiere: {primerRequisitoTarea}</span>
             )}
@@ -534,6 +581,8 @@ function FilaTramite({ item, temaNombre, expandido, onToggle, onCambiarEstado, o
                 })}
               </ol>
             )}
+
+            <PorQueAplica cumplimiento={cumplimiento} normativas={normativas} />
           </div>
 
           {/* Área 2: gestionar */}
@@ -597,6 +646,136 @@ function FilaTramite({ item, temaNombre, expandido, onToggle, onCambiarEstado, o
               </p>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Explica por qué un trámite quedó incluido, con el detalle que guardó
+ * `generarChecklist` al evaluar la regla documentada: qué condiciones se
+ * cumplieron, con qué datos, y con qué fundamento normativo. Si el trámite
+ * todavía no tiene una regla propia (la mayoría, por ahora), lo aclara en
+ * vez de mostrar una explicación genérica.
+ */
+function PorQueAplica({ cumplimiento, normativas }) {
+  const [abierto, setAbierto] = useState(false);
+
+  if (!cumplimiento.regla_id) {
+    return (
+      <p className="mt-4 text-xs" style={{ color: "#8a978f" }}>
+        Este trámite todavía no tiene una regla documentada con fuente
+        verificable: se incluyó porque el tema y la jurisdicción coinciden
+        con lo declarado.
+      </p>
+    );
+  }
+
+  const normativaFundamento = normativas.find((n) => n.id === cumplimiento.regla_norma_ref);
+  const info = RESULTADO_INFO[cumplimiento.resultado];
+  const fecha = formatearFechaEvaluacion(cumplimiento.fecha_evaluacion);
+  const datosEvaluados = cumplimiento.datos_evaluados
+    ? Object.entries(cumplimiento.datos_evaluados)
+    : [];
+
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        className="text-xs font-medium hover:underline"
+        style={{ color: "#087E69" }}
+      >
+        {abierto ? "Ocultar explicación ▴" : "¿Por qué aparece este trámite? ▾"}
+      </button>
+
+      {abierto && (
+        <div
+          className="mt-3 space-y-3 rounded-md p-4 text-xs"
+          style={{ background: "#F5F7F3", border: "1px solid #DDE6DF" }}
+        >
+          {cumplimiento.condiciones_cumplidas?.length > 0 && (
+            <div>
+              <p className="font-medium" style={{ color: "#173A34" }}>
+                Motivo de inclusión
+              </p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4" style={{ color: "#40544c" }}>
+                {cumplimiento.condiciones_cumplidas.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {datosEvaluados.length > 0 && (
+            <div>
+              <p className="font-medium" style={{ color: "#173A34" }}>
+                Datos utilizados
+              </p>
+              <ul className="mt-1 space-y-0.5" style={{ color: "#40544c" }}>
+                {datosEvaluados.map(([campo, valor]) => (
+                  <li key={campo}>
+                    {CAMPO_LABELS[campo] || campo}:{" "}
+                    <span className="font-medium">{formatearValorDato(valor)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {cumplimiento.regla_descripcion && (
+            <div>
+              <p className="font-medium" style={{ color: "#173A34" }}>
+                Criterio evaluado
+              </p>
+              <p className="mt-1" style={{ color: "#40544c" }}>
+                {cumplimiento.regla_descripcion}
+              </p>
+            </div>
+          )}
+
+          <div>
+            <p className="font-medium" style={{ color: "#173A34" }}>
+              Resultado
+            </p>
+            <p className="mt-1" style={{ color: info?.color || "#40544c" }}>
+              {info?.texto || cumplimiento.resultado}
+              {cumplimiento.condiciones_sin_respuesta?.length > 0 && (
+                <> — falta confirmar: {cumplimiento.condiciones_sin_respuesta.join("; ")}</>
+              )}
+            </p>
+          </div>
+
+          {(cumplimiento.regla_articulos || normativaFundamento) && (
+            <div>
+              <p className="font-medium" style={{ color: "#173A34" }}>
+                Fundamento
+              </p>
+              <p className="mt-1" style={{ color: "#40544c" }}>
+                {cumplimiento.regla_articulos}
+                {normativaFundamento?.url_fuente && (
+                  <>
+                    {" "}
+                    <a
+                      href={normativaFundamento.url_fuente}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                      style={{ color: "#087E69" }}
+                    >
+                      Consultar fuente oficial ↗
+                    </a>
+                  </>
+                )}
+              </p>
+            </div>
+          )}
+
+          <p style={{ color: "#8a978f" }}>
+            Resultado generado a partir de los datos declarados por la empresa.
+            {fecha && <> Última evaluación: {fecha}.</>}
+          </p>
         </div>
       )}
     </div>
