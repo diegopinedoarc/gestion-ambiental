@@ -123,13 +123,40 @@ export default function DetalleEstablecimiento({ params }) {
               </span>
             </div>
             {tramite.requisitos?.length > 0 && (
-              <ul className="mt-3 space-y-1 border-t border-neutral-100 pt-3 text-sm dark:border-neutral-900">
-                {tramite.requisitos.map((r, i) => (
-                  <li key={i} className="flex gap-2 text-neutral-600 dark:text-neutral-400">
-                    <span className="text-neutral-400">•</span>
-                    <span>{r}</span>
-                  </li>
-                ))}
+              <ul className="mt-3 space-y-3 border-t border-neutral-100 pt-3 text-sm dark:border-neutral-900">
+                {tramite.requisitos.map((r, i) => {
+                  const req = typeof r === "string" ? { tarea: r } : r;
+                  return (
+                    <li key={i} className="flex gap-2">
+                      <span className="mt-0.5 text-neutral-400">•</span>
+                      <div>
+                        <p className="font-medium text-neutral-800 dark:text-neutral-200">
+                          {req.tarea}
+                        </p>
+                        {req.detalle && (
+                          <p className="mt-0.5 text-neutral-600 dark:text-neutral-400">
+                            {req.detalle}
+                          </p>
+                        )}
+                        {(req.plazo || req.link) && (
+                          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
+                            {req.plazo && <span>⏱ {req.plazo}</span>}
+                            {req.link && (
+                              <a
+                                href={req.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-emerald-600 hover:underline"
+                              >
+                                Ver más ↗
+                              </a>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
