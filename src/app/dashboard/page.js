@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
+import { alertaVencimiento, sugerirVencimiento } from "@/lib/vencimientos";
 
 const ESTADOS = ["pendiente", "en trámite", "vigente", "vencido", "no aplica"];
 
@@ -94,26 +95,41 @@ export default function DashboardPage() {
   }, [perfil]);
 
   async function cambiarEstado(cumplimientoId, nuevoEstado) {
-    await updateDoc(doc(db, "cumplimiento", cumplimientoId), {
-      estado: nuevoEstado,
-    });
+    const item = items.find((it) => it.cumplimiento.id === cumplimientoId);
+    const cambios = { estado: nuevoEstado };
+
+    // Al marcar un trámite como vigente, si todavía no tiene fechas
+    // cargadas le sugerimos una fecha de obtención (hoy) y, según la
+    // periodicidad del trámite, una fecha de vencimiento tentativa. La
+    // empresa puede corregirlas si el organismo le dio otro plazo.
+    if (nuevoEstado === "vigente" && item) {
+      if (!item.cumplimiento.fecha_obtencion) {
+        cambios.fecha_obtencion = new Date().toISOString().slice(0, 10);
+      }
+      if (!item.cumplimiento.fecha_vencimiento) {
+        const sugerida = sugerirVencimiento(item.tramite?.periodicidad);
+        if (sugerida) cambios.fecha_vencimiento = sugerida;
+      }
+    }
+
+    await updateDoc(doc(db, "cumplimiento", cumplimientoId), cambios);
     setItems((prev) =>
       prev.map((it) =>
         it.cumplimiento.id === cumplimientoId
-          ? { ...it, cumplimiento: { ...it.cumplimiento, estado: nuevoEstado } }
+          ? { ...it, cumplimiento: { ...it.cumplimiento, ...cambios } }
           : it
       )
     );
   }
 
-  async function cambiarVencimiento(cumplimientoId, fecha) {
+  async function cambiarFecha(cumplimientoId, campo, fecha) {
     await updateDoc(doc(db, "cumplimiento", cumplimientoId), {
-      fecha_vencimiento: fecha || null,
+      [campo]: fecha || null,
     });
     setItems((prev) =>
       prev.map((it) =>
         it.cumplimiento.id === cumplimientoId
-          ? { ...it, cumplimiento: { ...it.cumplimiento, fecha_vencimiento: fecha } }
+          ? { ...it, cumplimiento: { ...it.cumplimiento, [campo]: fecha } }
           : it
       )
     );
@@ -122,10 +138,15 @@ export default function DashboardPage() {
   const resumen = useMemo(() => {
     const activos = items.filter((i) => i.cumplimiento.estado !== "no aplica");
     const conteo = { pendiente: 0, "en trámite": 0, vigente: 0, vencido: 0 };
+    let vencenPronto = 0;
+    let vencidos = 0;
     activos.forEach((i) => {
       if (conteo[i.cumplimiento.estado] !== undefined) conteo[i.cumplimiento.estado]++;
+      const alerta = alertaVencimiento(i.cumplimiento.fecha_vencimiento);
+      if (alerta?.tono === "porVencer") vencenPronto++;
+      if (alerta?.tono === "vencido") vencidos++;
     });
-    return { total: activos.length, ...conteo };
+    return { total: activos.length, ...conteo, vencenPronto, vencidos };
   }, [items]);
 
   if (loading || cargando) {
@@ -145,11 +166,13 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <Tarjeta titulo="Trámites aplicables" valor={resumen.total} />
         <Tarjeta titulo="Pendientes" valor={resumen.pendiente} tono="amber" />
         <Tarjeta titulo="En trámite" valor={resumen["en trámite"]} tono="blue" />
         <Tarjeta titulo="Vigentes" valor={resumen.vigente} tono="emerald" />
+        <Tarjeta titulo="Vencen pronto" valor={resumen.vencenPronto} tono="amber" />
+        <Tarjeta titulo="Vencidos" valor={resumen.vencidos} tono="red" />
       </div>
 
       <h2 className="mt-10 mb-4 text-lg font-semibold">Checklist de cumplimiento</h2>
@@ -169,11 +192,26 @@ export default function DashboardPage() {
                     {tramite.organismo} · {tramite.periodicidad}
                   </p>
                 </div>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${ESTADO_COLOR[cumplimiento.estado]}`}
-                >
-                  {cumplimiento.estado}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${ESTADO_COLOR[cumplimiento.estado]}`}
+                  >
+                    {cumplimiento.estado}
+                  </span>
+                  {(() => {
+                    const alerta = alertaVencimiento(cumplimiento.fecha_vencimiento);
+                    if (!alerta) return null;
+                    const tonoClase =
+                      alerta.tono === "vencido"
+                        ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
+                    return (
+                      <span className={`rounded-full px-3 py-1 text-xs font-medium ${tonoClase}`}>
+                        ⚠ {alerta.texto}
+                      </span>
+                    );
+                  })()}
+                </div>
               </div>
 
               <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-400">
@@ -246,15 +284,33 @@ export default function DashboardPage() {
                   </select>
                 </label>
                 <label className="flex items-center gap-2">
+                  Obtenido:
+                  <input
+                    type="date"
+                    className="rounded-md border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                    value={cumplimiento.fecha_obtencion || ""}
+                    onChange={(e) =>
+                      cambiarFecha(cumplimiento.id, "fecha_obtencion", e.target.value)
+                    }
+                  />
+                </label>
+                <label className="flex items-center gap-2">
                   Vencimiento:
                   <input
                     type="date"
                     className="rounded-md border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
                     value={cumplimiento.fecha_vencimiento || ""}
-                    onChange={(e) => cambiarVencimiento(cumplimiento.id, e.target.value)}
+                    onChange={(e) =>
+                      cambiarFecha(cumplimiento.id, "fecha_vencimiento", e.target.value)
+                    }
                   />
                 </label>
               </div>
+              <p className="mt-1 text-xs text-neutral-400">
+                La fecha de vencimiento se sugiere sola al marcar el trámite como
+                &ldquo;vigente&rdquo;, tomando la periodicidad del trámite — corregila si el
+                organismo te dio un plazo distinto.
+              </p>
             </div>
           ))}
       </div>
@@ -262,11 +318,18 @@ export default function DashboardPage() {
   );
 }
 
-function Tarjeta({ titulo, valor }) {
+const TONO_TEXTO = {
+  amber: "text-amber-600 dark:text-amber-400",
+  blue: "text-blue-600 dark:text-blue-400",
+  emerald: "text-emerald-600 dark:text-emerald-400",
+  red: "text-red-600 dark:text-red-400",
+};
+
+function Tarjeta({ titulo, valor, tono }) {
   return (
     <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
       <p className="text-xs text-neutral-500">{titulo}</p>
-      <p className="mt-1 text-2xl font-semibold">{valor}</p>
+      <p className={`mt-1 text-2xl font-semibold ${TONO_TEXTO[tono] || ""}`}>{valor}</p>
     </div>
   );
 }

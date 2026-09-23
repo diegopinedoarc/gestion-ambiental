@@ -6,6 +6,7 @@ import Link from "next/link";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
+import { alertaVencimiento } from "@/lib/vencimientos";
 
 const ESTADO_COLOR = {
   pendiente: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
@@ -111,16 +112,34 @@ export default function DetalleEstablecimiento({ params }) {
                 <p className="font-medium">{tramite.nombre}</p>
                 <p className="text-sm text-neutral-500">
                   {tramite.organismo} · {tramite.periodicidad}
+                  {cumplimiento.fecha_obtencion
+                    ? ` · obtenido ${cumplimiento.fecha_obtencion}`
+                    : ""}
                   {cumplimiento.fecha_vencimiento
                     ? ` · vence ${cumplimiento.fecha_vencimiento}`
                     : ""}
                 </p>
               </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${ESTADO_COLOR[cumplimiento.estado]}`}
-              >
-                {cumplimiento.estado}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${ESTADO_COLOR[cumplimiento.estado]}`}
+                >
+                  {cumplimiento.estado}
+                </span>
+                {(() => {
+                  const alerta = alertaVencimiento(cumplimiento.fecha_vencimiento);
+                  if (!alerta) return null;
+                  const tonoClase =
+                    alerta.tono === "vencido"
+                      ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+                      : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
+                  return (
+                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${tonoClase}`}>
+                      ⚠ {alerta.texto}
+                    </span>
+                  );
+                })()}
+              </div>
             </div>
             {tramite.requisitos?.length > 0 && (
               <ul className="mt-3 space-y-3 border-t border-neutral-100 pt-3 text-sm dark:border-neutral-900">
