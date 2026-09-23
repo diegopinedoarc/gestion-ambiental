@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, signOut as fbSignOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
 const AuthContext = createContext({
@@ -18,22 +18,43 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+    // Suscripción en tiempo real al perfil del usuario logueado, para que
+    // los cambios hechos en otras pantallas (por ej. el onboarding
+    // agregando establecimiento_ref) se reflejen acá sin recargar.
+    let unsubPerfil = null;
+
+    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      // Si había una suscripción de un usuario anterior, la cerramos.
+      if (unsubPerfil) {
+        unsubPerfil();
+        unsubPerfil = null;
+      }
+
       setUser(firebaseUser);
+
       if (firebaseUser) {
-        try {
-          const snap = await getDoc(doc(db, "usuarios", firebaseUser.uid));
-          setPerfil(snap.exists() ? snap.data() : null);
-        } catch (e) {
-          console.error("Error leyendo perfil de usuario", e);
-          setPerfil(null);
-        }
+        unsubPerfil = onSnapshot(
+          doc(db, "usuarios", firebaseUser.uid),
+          (snap) => {
+            setPerfil(snap.exists() ? snap.data() : null);
+            setLoading(false);
+          },
+          (e) => {
+            console.error("Error leyendo perfil de usuario", e);
+            setPerfil(null);
+            setLoading(false);
+          }
+        );
       } else {
         setPerfil(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
-    return () => unsub();
+
+    return () => {
+      unsubAuth();
+      if (unsubPerfil) unsubPerfil();
+    };
   }, []);
 
   const signOut = async () => {
