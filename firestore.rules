@@ -1,0 +1,71 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function estaLogueado() {
+      return request.auth != null;
+    }
+
+    function esAdmin() {
+      return estaLogueado() &&
+        exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function esDueñoDelEstablecimiento(establecimientoId) {
+      return estaLogueado() &&
+        exists(/databases/$(database)/documents/establecimientos/$(establecimientoId)) &&
+        get(/databases/$(database)/documents/establecimientos/$(establecimientoId)).data.usuario_ref == request.auth.uid;
+    }
+
+    // ---- Base normativa: lectura pública, escritura solo admin (se carga vía seed o consola) ----
+    match /jurisdicciones/{id} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+    match /industrias/{id} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+    match /temas_ambientales/{id} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+    match /normativas/{id} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+    match /tramites/{id} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    // ---- Usuarios: cada uno lee/edita su propio perfil; el admin lee todos ----
+    match /usuarios/{uid} {
+      allow read: if estaLogueado() && (request.auth.uid == uid || esAdmin());
+      allow create: if estaLogueado() && request.auth.uid == uid;
+      allow update: if estaLogueado() && (request.auth.uid == uid || esAdmin());
+      allow delete: if false;
+    }
+
+    // ---- Establecimientos: el dueño puede crear/leer/editar el suyo; admin lee todos ----
+    match /establecimientos/{id} {
+      allow create: if estaLogueado() && request.resource.data.usuario_ref == request.auth.uid;
+      allow read: if estaLogueado() && (resource.data.usuario_ref == request.auth.uid || esAdmin());
+      allow update: if estaLogueado() && (resource.data.usuario_ref == request.auth.uid || esAdmin());
+      allow delete: if false;
+    }
+
+    // ---- Cumplimiento: ligado al establecimiento del usuario logueado, o admin ----
+    match /cumplimiento/{id} {
+      allow read: if estaLogueado() &&
+        (esDueñoDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
+      allow create: if estaLogueado() &&
+        (esDueñoDelEstablecimiento(request.resource.data.establecimiento_ref) || esAdmin());
+      allow update: if estaLogueado() &&
+        (esDueñoDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
+      allow delete: if false;
+    }
+  }
+}
