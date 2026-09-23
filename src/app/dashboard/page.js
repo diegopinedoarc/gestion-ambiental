@@ -189,6 +189,22 @@ export default function DashboardPage() {
                 </p>
               )}
 
+              {tramite.requisitos?.length > 0 && (
+                <div className="mt-4 rounded-md bg-neutral-50 p-3 dark:bg-neutral-900/60">
+                  <p className="text-xs font-medium text-neutral-500">
+                    Qué tenés que hacer para cumplir
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {tramite.requisitos.map((r, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="text-neutral-400">•</span>
+                        <span>{r}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-neutral-100 pt-4 text-sm dark:border-neutral-900">
                 <label className="flex items-center gap-2">
                   Estado:

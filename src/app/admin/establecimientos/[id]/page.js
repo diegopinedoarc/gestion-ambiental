@@ -104,22 +104,34 @@ export default function DetalleEstablecimiento({ params }) {
         {items.map(({ cumplimiento, tramite }) => (
           <div
             key={cumplimiento.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
+            className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
           >
-            <div>
-              <p className="font-medium">{tramite.nombre}</p>
-              <p className="text-sm text-neutral-500">
-                {tramite.organismo} · {tramite.periodicidad}
-                {cumplimiento.fecha_vencimiento
-                  ? ` · vence ${cumplimiento.fecha_vencimiento}`
-                  : ""}
-              </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">{tramite.nombre}</p>
+                <p className="text-sm text-neutral-500">
+                  {tramite.organismo} · {tramite.periodicidad}
+                  {cumplimiento.fecha_vencimiento
+                    ? ` · vence ${cumplimiento.fecha_vencimiento}`
+                    : ""}
+                </p>
+              </div>
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-medium ${ESTADO_COLOR[cumplimiento.estado]}`}
+              >
+                {cumplimiento.estado}
+              </span>
             </div>
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-medium ${ESTADO_COLOR[cumplimiento.estado]}`}
-            >
-              {cumplimiento.estado}
-            </span>
+            {tramite.requisitos?.length > 0 && (
+              <ul className="mt-3 space-y-1 border-t border-neutral-100 pt-3 text-sm dark:border-neutral-900">
+                {tramite.requisitos.map((r, i) => (
+                  <li key={i} className="flex gap-2 text-neutral-600 dark:text-neutral-400">
+                    <span className="text-neutral-400">•</span>
+                    <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ))}
         {items.length === 0 && (
