@@ -59,13 +59,49 @@ export async function buscarNormativasPorIds(normativaIds) {
 }
 
 /**
+ * Dado el municipio (jurisdiccion_ref) de un establecimiento, devuelve todos
+ * los ids de jurisdicción que efectivamente le aplican: nación, el municipio
+ * mismo, la provincia a la que pertenece, y — si corresponde — una autoridad
+ * interjurisdiccional que lo abarque (ej: ACUMAR para los municipios de la
+ * Cuenca Matanza-Riachuelo), marcada en el documento del municipio con el
+ * campo `cuenca_ref`.
+ *
+ * Esto es lo que permite que un trámite municipal de Tigre no le aparezca a
+ * una empresa de Lanús, y viceversa, aunque ambos trámites compartan el
+ * mismo tema ambiental.
+ */
+export async function jurisdiccionesAplicables(jurisdiccionMunicipioId) {
+  const ids = new Set(["nacion"]);
+  if (!jurisdiccionMunicipioId) return Array.from(ids);
+  ids.add(jurisdiccionMunicipioId);
+
+  const snap = await getDoc(doc(db, "jurisdicciones", jurisdiccionMunicipioId));
+  if (snap.exists()) {
+    const data = snap.data();
+    if (data.provincia_ref) ids.add(data.provincia_ref);
+    if (data.cuenca_ref) ids.add(data.cuenca_ref);
+  }
+  return Array.from(ids);
+}
+
+/**
  * Genera (o regenera) el checklist de cumplimiento de un establecimiento:
  * un documento en `cumplimiento` por cada trámite que le corresponde,
  * en estado "pendiente" si es la primera vez que se detecta.
  */
 export async function generarChecklist(establecimientoId, datosEstablecimiento) {
   const temas = detectarTemas(datosEstablecimiento);
-  const tramites = await buscarTramitesPorTemas(temas);
+  const candidatos = await buscarTramitesPorTemas(temas);
+
+  // Filtramos por jurisdicción: un trámite sólo aplica si es nacional, de la
+  // provincia del municipio, del municipio mismo, o de una autoridad
+  // interjurisdiccional (ACUMAR, etc.) que abarque a ese municipio.
+  const jurisdiccionesOk = await jurisdiccionesAplicables(
+    datosEstablecimiento.jurisdiccion_ref
+  );
+  const tramites = candidatos.filter((t) =>
+    jurisdiccionesOk.includes(t.jurisdiccion_ref)
+  );
 
   // Traemos el checklist existente para no pisar estados ya cargados por el usuario.
   const existQ = query(

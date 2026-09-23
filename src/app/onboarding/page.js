@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
 import { generarChecklist } from "@/lib/matching";
@@ -20,6 +28,8 @@ const ESTADO_INICIAL = {
   nombre: "",
   cuit: "",
   direccion: "",
+  industria_ref: "",
+  jurisdiccion_ref: "",
   situacion: "existente", // "nuevo" | "existente"
   empleados: "",
   superficieM2: "",
@@ -40,11 +50,25 @@ export default function OnboardingPage() {
   const [form, setForm] = useState(ESTADO_INICIAL);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
+  const [industrias, setIndustrias] = useState([]);
+  const [municipios, setMunicipios] = useState([]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
     if (!loading && perfil?.establecimiento_ref) router.push("/dashboard");
   }, [loading, user, perfil, router]);
+
+  useEffect(() => {
+    async function cargarOpciones() {
+      const [indSnap, munSnap] = await Promise.all([
+        getDocs(collection(db, "industrias")),
+        getDocs(query(collection(db, "jurisdicciones"), where("nivel", "==", "municipal"))),
+      ]);
+      setIndustrias(indSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setMunicipios(munSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }
+    cargarOpciones();
+  }, []);
 
   function update(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -58,6 +82,11 @@ export default function OnboardingPage() {
   }
 
   async function confirmar() {
+    if (!form.industria_ref || !form.jurisdiccion_ref) {
+      setError("Elegí el rubro y el municipio antes de confirmar.");
+      setPaso(0);
+      return;
+    }
     setEnviando(true);
     setError("");
     try {
@@ -69,8 +98,6 @@ export default function OnboardingPage() {
         consumoAguaM3Dia: form.consumoAguaM3Dia
           ? Number(form.consumoAguaM3Dia)
           : 0,
-        industria_ref: "quimica",
-        jurisdiccion_ref: "tigre",
         usuario_ref: user.uid,
         creado: serverTimestamp(),
       };
@@ -139,7 +166,37 @@ export default function OnboardingPage() {
               placeholder="30-XXXXXXXX-X"
             />
           </Campo>
-          <Campo label="Domicilio del establecimiento (Tigre)">
+          <div className="grid grid-cols-2 gap-4">
+            <Campo label="Rubro / industria">
+              <select
+                className="input"
+                value={form.industria_ref}
+                onChange={(e) => update("industria_ref", e.target.value)}
+              >
+                <option value="">Seleccionar...</option>
+                {industrias.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.nombre}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+            <Campo label="Municipio">
+              <select
+                className="input"
+                value={form.jurisdiccion_ref}
+                onChange={(e) => update("jurisdiccion_ref", e.target.value)}
+              >
+                <option value="">Seleccionar...</option>
+                {municipios.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nombre}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          </div>
+          <Campo label="Domicilio del establecimiento">
             <input
               className="input"
               value={form.direccion}
@@ -211,8 +268,9 @@ export default function OnboardingPage() {
               onChange={(e) => update("consumoAguaM3Dia", e.target.value)}
             />
             <p className="mt-1 text-xs text-neutral-500">
-              A partir de 50 m³/día la Res. ADA 336/03 exige llevar registro
-              de cantidad y calidad de efluentes.
+              A partir de 50 m³/día suele exigirse llevar registro de
+              cantidad y calidad de efluentes (Res. ADA 336/03 u otra
+              reglamentación equivalente según tu jurisdicción).
             </p>
           </Campo>
           <Toggle
@@ -254,6 +312,14 @@ export default function OnboardingPage() {
         <div className="space-y-3 rounded-lg border border-neutral-200 p-5 text-sm dark:border-neutral-800">
           <Resumen label="Razón social" valor={form.nombre || "—"} />
           <Resumen label="CUIT" valor={form.cuit || "—"} />
+          <Resumen
+            label="Rubro"
+            valor={industrias.find((i) => i.id === form.industria_ref)?.nombre || "—"}
+          />
+          <Resumen
+            label="Municipio"
+            valor={municipios.find((m) => m.id === form.jurisdiccion_ref)?.nombre || "—"}
+          />
           <Resumen label="Domicilio" valor={form.direccion || "—"} />
           <Resumen
             label="Situación"

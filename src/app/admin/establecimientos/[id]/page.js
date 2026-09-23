@@ -21,6 +21,8 @@ export default function DetalleEstablecimiento({ params }) {
   const { user, perfil, loading } = useAuth();
   const router = useRouter();
   const [establecimiento, setEstablecimiento] = useState(null);
+  const [industria, setIndustria] = useState(null);
+  const [jurisdiccion, setJurisdiccion] = useState(null);
   const [items, setItems] = useState([]);
   const [cargando, setCargando] = useState(true);
 
@@ -35,7 +37,17 @@ export default function DetalleEstablecimiento({ params }) {
       setCargando(true);
 
       const estSnap = await getDoc(doc(db, "establecimientos", id));
-      setEstablecimiento(estSnap.exists() ? { id: estSnap.id, ...estSnap.data() } : null);
+      const est = estSnap.exists() ? { id: estSnap.id, ...estSnap.data() } : null;
+      setEstablecimiento(est);
+
+      if (est?.industria_ref) {
+        const indSnap = await getDoc(doc(db, "industrias", est.industria_ref));
+        setIndustria(indSnap.exists() ? { id: indSnap.id, ...indSnap.data() } : null);
+      }
+      if (est?.jurisdiccion_ref) {
+        const jurSnap = await getDoc(doc(db, "jurisdicciones", est.jurisdiccion_ref));
+        setJurisdiccion(jurSnap.exists() ? { id: jurSnap.id, ...jurSnap.data() } : null);
+      }
 
       const cumplQ = query(
         collection(db, "cumplimiento"),
@@ -86,6 +98,8 @@ export default function DetalleEstablecimiento({ params }) {
 
       <h1 className="mt-4 text-2xl font-semibold">{establecimiento.nombre}</h1>
       <div className="mt-2 grid gap-1 text-sm text-neutral-500 sm:grid-cols-2">
+        <p>Rubro: {industria?.nombre || "—"}</p>
+        <p>Municipio: {jurisdiccion?.nombre || "—"}</p>
         <p>CUIT: {establecimiento.cuit || "—"}</p>
         <p>Dirección: {establecimiento.direccion || "—"}</p>
         <p>Empleados: {establecimiento.empleados ?? "—"}</p>

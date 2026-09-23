@@ -13,6 +13,8 @@ export default function AdminPage() {
   const [establecimientos, setEstablecimientos] = useState([]);
   const [cumplimientos, setCumplimientos] = useState([]);
   const [tramites, setTramites] = useState([]);
+  const [industrias, setIndustrias] = useState([]);
+  const [jurisdicciones, setJurisdicciones] = useState([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -24,14 +26,18 @@ export default function AdminPage() {
     async function cargar() {
       if (!perfil || perfil.role !== "admin") return;
       setCargando(true);
-      const [estSnap, cumplSnap, tramSnap] = await Promise.all([
+      const [estSnap, cumplSnap, tramSnap, indSnap, jurSnap] = await Promise.all([
         getDocs(collection(db, "establecimientos")),
         getDocs(collection(db, "cumplimiento")),
         getDocs(collection(db, "tramites")),
+        getDocs(collection(db, "industrias")),
+        getDocs(collection(db, "jurisdicciones")),
       ]);
       setEstablecimientos(estSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setCumplimientos(cumplSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setTramites(tramSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setIndustrias(indSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setJurisdicciones(jurSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setCargando(false);
     }
     cargar();
@@ -42,6 +48,18 @@ export default function AdminPage() {
     tramites.forEach((t) => m.set(t.id, t));
     return m;
   }, [tramites]);
+
+  const industriasPorId = useMemo(() => {
+    const m = new Map();
+    industrias.forEach((i) => m.set(i.id, i));
+    return m;
+  }, [industrias]);
+
+  const jurisdiccionesPorId = useMemo(() => {
+    const m = new Map();
+    jurisdicciones.forEach((j) => m.set(j.id, j));
+    return m;
+  }, [jurisdicciones]);
 
   const porEstablecimiento = useMemo(() => {
     const m = new Map();
@@ -117,7 +135,8 @@ export default function AdminPage() {
           <thead className="bg-neutral-50 text-left dark:bg-neutral-900">
             <tr>
               <th className="px-4 py-2 font-medium">Empresa</th>
-              <th className="px-4 py-2 font-medium">Dirección</th>
+              <th className="px-4 py-2 font-medium">Rubro</th>
+              <th className="px-4 py-2 font-medium">Zona</th>
               <th className="px-4 py-2 font-medium">Trámites</th>
               <th className="px-4 py-2 font-medium">Pendientes</th>
               <th className="px-4 py-2 font-medium">Vencidos</th>
@@ -132,7 +151,12 @@ export default function AdminPage() {
               return (
                 <tr key={e.id} className="border-t border-neutral-100 dark:border-neutral-900">
                   <td className="px-4 py-2 font-medium">{e.nombre || "—"}</td>
-                  <td className="px-4 py-2 text-neutral-500">{e.direccion || "—"}</td>
+                  <td className="px-4 py-2 text-neutral-500">
+                    {industriasPorId.get(e.industria_ref)?.nombre || "—"}
+                  </td>
+                  <td className="px-4 py-2 text-neutral-500">
+                    {jurisdiccionesPorId.get(e.jurisdiccion_ref)?.nombre || "—"}
+                  </td>
                   <td className="px-4 py-2">{items.length}</td>
                   <td className="px-4 py-2">{pendientes}</td>
                   <td className="px-4 py-2">{vencidos}</td>
@@ -149,7 +173,7 @@ export default function AdminPage() {
             })}
             {establecimientos.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-neutral-500">
+                <td colSpan={7} className="px-4 py-6 text-center text-neutral-500">
                   Todavía no hay empresas registradas.
                 </td>
               </tr>

@@ -44,15 +44,27 @@ y acceso total para el rol admin). Pegalas en la consola de Firebase:
 > te olvides de reemplazarlas por las de `firestore.rules` antes de dejar la
 > app en producción.
 
-## Cómo dar de alta al primer usuario admin
+## Cómo dar de alta un usuario admin
 
-1. Registrate normalmente desde `/login?modo=registro` con el email que vas
-   a usar como admin.
-2. En la consola de Firebase → Firestore Database → colección `usuarios` →
+**Opción rápida (recomendada):** en `/login`, pestaña "Crear cuenta" → elegís
+el tipo de cuenta **"Equipo del proyecto"** en vez de "Empresa". Te pide un
+código (variable `NEXT_PUBLIC_ADMIN_SIGNUP_CODE`, ver `.env.local.example`)
+y te crea la cuenta directo con rol admin, sin pasar por el wizard de alta
+de establecimiento. Cambiá ese código antes de compartir el link con nadie
+más.
+
+**Opción manual (si ya te registraste como empresa):**
+
+1. En la consola de Firebase → Firestore Database → colección `usuarios` →
    buscá el documento con tu `uid` (mismo id que en Authentication → Users).
-3. Editá el campo `role` de `"cliente"` a `"admin"`.
-4. Refrescá la sesión (cerrá sesión y volvé a entrar) — ahora vas a ver el
+2. Editá el campo `role` de `"cliente"` a `"admin"`.
+3. Refrescá la sesión (cerrá sesión y volvé a entrar) — ahora vas a ver el
    panel de administración en `/admin`.
+
+> Nota de seguridad: el código de admin viaja en el bundle del cliente
+> (`NEXT_PUBLIC_...`), así que no es un secreto fuerte — alcanza para este
+> piloto con pocos usuarios conocidos, pero no lo uses como único control de
+> acceso en un despliegue más grande.
 
 ## Deploy
 
@@ -78,16 +90,46 @@ git push -u origin main
    el dominio que te da Vercel (`tu-proyecto.vercel.app`) para que el login
    funcione ahí también.
 
+## Escalabilidad a otras industrias y zonas
+
+El modelo ya soporta más de un rubro y más de un municipio al mismo tiempo.
+Además de industria química / Tigre, hay un segundo caso cargado como
+prueba de escalabilidad: **curtiembres en la Cuenca Matanza-Riachuelo
+(Lanús)**, que suma:
+
+- Una jurisdicción interjurisdiccional (`acumar`) que se superpone a un
+  municipio (marcada con el campo `cuenca_ref` en el documento del
+  municipio en `jurisdicciones`).
+- Trámites propios de ACUMAR (inscripción como agente contaminante,
+  Programa de Reconversión Industrial, cámara de toma de muestra, control
+  de parámetros de vertido) además de los provinciales/nacionales que ya
+  existían.
+
+El motor de matching (`src/lib/matching.js`) filtra los trámites por
+**tema ambiental Y jurisdicción**: un trámite municipal de Tigre nunca le
+va a aparecer a una empresa de Lanús, y viceversa, aunque compartan el
+mismo tema. La función `jurisdiccionesAplicables()` arma la lista de
+jurisdicciones válidas para un establecimiento (nación + su provincia + su
+municipio + la autoridad de cuenca, si corresponde) antes de armar el
+checklist.
+
+Para sumar una industria o zona nueva: agregar el documento en
+`industrias` o `jurisdicciones` (vía `seed-normativa.html`), cargar sus
+normativas y trámites con el `jurisdiccion_ref`/`tema_ref` que corresponda,
+y ya aparece como opción en el wizard de onboarding — no hace falta tocar
+código.
+
 ## Flujo de la app
 
 1. **Landing (`/`)** → explica la herramienta, botones de registro/login.
 2. **Registro/login (`/login`)** → crea el usuario en Firebase Auth + un doc
    en `usuarios` con `role: "cliente"`.
-3. **Onboarding (`/onboarding`)** → wizard de 3 pasos que carga los datos del
-   establecimiento y las respuestas ambientales (genera residuos peligrosos,
-   especiales, efluentes, emisiones, habilitación). Al confirmar, se generan
-   automáticamente los documentos de `cumplimiento` cruzando esas respuestas
-   contra `tramites`.
+3. **Onboarding (`/onboarding`)** → wizard de 3 pasos: rubro y municipio,
+   datos del establecimiento, y las respuestas ambientales (genera residuos
+   peligrosos, especiales, efluentes, emisiones, habilitación). Al
+   confirmar, se generan automáticamente los documentos de `cumplimiento`
+   cruzando esas respuestas contra `tramites` — filtrados por tema
+   ambiental y por jurisdicción.
 4. **Dashboard cliente (`/dashboard`)** → checklist editable (estado y fecha
    de vencimiento de cada trámite).
 5. **Dashboard admin (`/admin`)** → listado de todas las empresas cargadas,
