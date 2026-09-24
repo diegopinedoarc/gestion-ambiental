@@ -171,6 +171,15 @@ export function evaluarRegla(regla, datos) {
 // Campos de `datos` que efectivamente participan de las condiciones de una
 // regla, para guardar solo eso como snapshot en `datos_evaluados` (y no el
 // establecimiento entero).
+// Guarda un snapshot de la evaluación en la subcolección
+// `cumplimiento/{id}/evaluaciones`, sin pisar nada: cada recálculo agrega un
+// documento nuevo. Es lo que permite reconstruir después qué cambió entre
+// una corrida y la siguiente (ver historial en el detalle del trámite).
+function registrarEvaluacion(batch, cumplimientoRef, snapshot) {
+  const evRef = doc(collection(cumplimientoRef, "evaluaciones"));
+  batch.set(evRef, { ...snapshot, fecha: serverTimestamp() });
+}
+
 function camposDeRegla(regla) {
   const campos = new Set();
   regla.condiciones.forEach((cond) => {
@@ -271,6 +280,7 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
         const cambios = { ...camposResultado };
         if (previo.estado !== "no aplica") cambios.estado = "no aplica";
         batch.update(previo.ref, cambios);
+        registrarEvaluacion(batch, previo.ref, camposResultado);
       }
       return;
     }
@@ -281,6 +291,7 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
       // vuelve a corresponder, se reabre como pendiente.
       if (previo.estado === "no aplica") cambios.estado = "pendiente";
       batch.update(previo.ref, cambios);
+      registrarEvaluacion(batch, previo.ref, camposResultado);
     } else {
       const ref = doc(collection(db, "cumplimiento"));
       batch.set(ref, {
@@ -293,6 +304,7 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
         creado: serverTimestamp(),
         ...camposResultado,
       });
+      registrarEvaluacion(batch, ref, camposResultado);
     }
   });
 
@@ -301,7 +313,15 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
   existSnap.docs.forEach((d) => {
     const data = d.data();
     if (!idsEvaluados.has(data.tramite_ref) && data.estado !== "no aplica") {
-      batch.update(d.ref, { estado: "no aplica", resultado: "no_aplica" });
+      const camposResultado = { resultado: "no_aplica" };
+      batch.update(d.ref, { estado: "no aplica", ...camposResultado });
+      registrarEvaluacion(batch, d.ref, {
+        ...camposResultado,
+        regla_id: data.regla_id || null,
+        condiciones_cumplidas: [],
+        condiciones_sin_respuesta: [],
+        datos_evaluados: {},
+      });
     }
   });
 
