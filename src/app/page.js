@@ -16,7 +16,7 @@ const PASOS = [
     numero: "2",
     titulo: "Revisá las obligaciones y su fundamento",
     detalle:
-      "La herramienta cruza tus respuestas contra la normativa cargada y te arma un checklist, cada ítem con la norma y el organismo detrás.",
+      "La herramienta cruza tus respuestas contra la normativa cargada y te arma un checklist: cada ítem con la norma y el organismo detrás, o marcado \"por confirmar\" cuando todavía falta documentar esa regla.",
   },
   {
     numero: "3",
@@ -105,15 +105,16 @@ export default function Home() {
             Gestión ambiental de residuos industriales
           </p>
           <h1 className="max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">
-            De normativa dispersa a un checklist claro de qué le aplica a tu
-            empresa.
+            De normativa dispersa a un primer diagnóstico claro de tu
+            establecimiento.
           </h1>
           <p className="mt-6 max-w-2xl text-lg text-neutral-600 dark:text-neutral-300">
             Cargá los datos de tu establecimiento y la herramienta cruza
             automáticamente la normativa nacional, provincial y municipal (y
             de autoridades de cuenca, cuando corresponde) sobre residuos,
-            efluentes y emisiones, para decirte exactamente qué trámites
-            necesitás y ante qué organismo.
+            efluentes y emisiones, para mostrarte qué obligaciones ya
+            identificamos —con su fundamento y el organismo a cargo— y qué
+            datos todavía faltan para confirmar el resto.
           </p>
 
           {!cargando && (industrias.length > 0 || municipios.length > 0) && (
@@ -247,11 +248,13 @@ export default function Home() {
         />
         <div className="relative mx-auto max-w-5xl text-center">
           <h2 className="text-2xl font-semibold text-white sm:text-3xl">
-            Sabé exactamente qué le exige la normativa a tu empresa.
+            Conocé las obligaciones ambientales identificadas para tu
+            establecimiento.
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-sm" style={{ color: "#B7CBC2" }}>
-            Registrá tu establecimiento y en minutos tenés el checklist de
-            trámites que te corresponden, con su fundamento legal.
+            Registrá tu establecimiento y en minutos tenés un primer
+            checklist: lo identificado con su fundamento legal, y lo que
+            todavía falta confirmar.
           </p>
           <div className="mt-7">
             <Link
