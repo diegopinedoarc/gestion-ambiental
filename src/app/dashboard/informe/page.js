@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
@@ -31,8 +31,24 @@ function valorDeclarado(valor) {
  *
  * Por defecto muestra el establecimiento del usuario logueado. Un admin
  * puede pedir el de cualquier empresa con `?id=<establecimientoId>`.
+ *
+ * `useSearchParams` obliga a envolver la página en un Suspense boundary
+ * para que Next.js pueda pre-renderizarla; el contenido real vive en
+ * `InformeContenido` y acá solo se arma ese wrapper.
  */
 export default function InformePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-4xl px-6 py-16 text-sm text-neutral-500">Cargando...</div>
+      }
+    >
+      <InformeContenido />
+    </Suspense>
+  );
+}
+
+function InformeContenido() {
   const { user, perfil, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
