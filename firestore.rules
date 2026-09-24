@@ -13,10 +13,27 @@ service cloud.firestore {
         get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Dueño original (usuario_ref) O colaborador sumado via invitación
+    // (subcolección `establecimientos/{id}/colaboradores`, ver más abajo).
+    // El nombre de la función quedó igual para no tocar cada lugar donde ya
+    // se usa: ahora significa "es dueño o colaborador", no solo "es dueño".
     function esDuenioDelEstablecimiento(establecimientoId) {
       return estaLogueado() &&
         exists(/databases/$(database)/documents/establecimientos/$(establecimientoId)) &&
-        get(/databases/$(database)/documents/establecimientos/$(establecimientoId)).data.usuario_ref == request.auth.uid;
+        (
+          get(/databases/$(database)/documents/establecimientos/$(establecimientoId)).data.usuario_ref == request.auth.uid ||
+          exists(/databases/$(database)/documents/establecimientos/$(establecimientoId)/colaboradores/$(request.auth.uid))
+        );
+    }
+
+    // Hay una invitación pendiente para este establecimiento a este mail.
+    // El id del documento en `invitaciones` es siempre
+    // `{establecimientoId}__{email}` (armado así para poder chequear que
+    // existe sin tener que hacer una consulta por campo, que las reglas de
+    // seguridad no permiten).
+    function existeInvitacionPendiente(establecimientoId, email) {
+      return exists(/databases/$(database)/documents/invitaciones/$(establecimientoId + '__' + email)) &&
+        get(/databases/$(database)/documents/invitaciones/$(establecimientoId + '__' + email)).data.estado == 'pendiente';
     }
 
     // ---- Base normativa: lectura publica, escritura solo admin (se carga via seed o consola) ----
@@ -53,12 +70,58 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---- Establecimientos: el dueno puede crear/leer/editar el suyo; admin lee todos ----
+    // ---- Establecimientos: el dueno y sus colaboradores pueden leer/editar
+    // el suyo; admin lee todos. Un invitado con invitación pendiente
+    // también puede leerlo (para poder mostrarle a qué empresa se está
+    // sumando en /onboarding, antes de aceptar). ----
     match /establecimientos/{id} {
       allow create: if estaLogueado() && request.resource.data.usuario_ref == request.auth.uid;
-      allow read: if estaLogueado() && (resource.data.usuario_ref == request.auth.uid || esAdmin());
-      allow update: if estaLogueado() && (resource.data.usuario_ref == request.auth.uid || esAdmin());
+      allow read: if estaLogueado() &&
+        (esDuenioDelEstablecimiento(id) || esAdmin() ||
+          existeInvitacionPendiente(id, request.auth.token.email.lower()));
+      allow update: if estaLogueado() && (esDuenioDelEstablecimiento(id) || esAdmin());
       allow delete: if false;
+
+      // ---- Colaboradores: quién más (además del dueño) tiene acceso a
+      // este establecimiento. Un doc por uid (el id del doc ES el uid), así
+      // que solo esa misma persona puede crearlo — y únicamente si tiene
+      // una invitación pendiente a su mail. Lo arma /onboarding al aceptar
+      // una invitación. ----
+      match /colaboradores/{uid} {
+        allow read: if estaLogueado() && (esDuenioDelEstablecimiento(id) || esAdmin());
+        allow create: if estaLogueado() && request.auth.uid == uid &&
+          existeInvitacionPendiente(id, request.auth.token.email.lower());
+        allow delete: if estaLogueado() &&
+          (
+            get(/databases/$(database)/documents/establecimientos/$(id)).data.usuario_ref == request.auth.uid ||
+            request.auth.uid == uid ||
+            esAdmin()
+          );
+        allow update: if false;
+      }
+    }
+
+    // ---- Invitaciones: para sumar a alguien más a un establecimiento sin
+    // tener que conocer su uid de antemano (no hay backend propio para
+    // buscar usuarios por mail). El id del doc es siempre
+    // `{establecimientoId}__{email}`. Cualquier dueño/colaborador de ese
+    // establecimiento puede invitar y cancelar; la propia persona invitada
+    // puede leer y aceptar la suya buscando por su mail. ----
+    match /invitaciones/{invId} {
+      allow read: if estaLogueado() &&
+        (esDuenioDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin() ||
+          resource.data.email == request.auth.token.email.lower());
+      allow create: if estaLogueado() &&
+        (esDuenioDelEstablecimiento(request.resource.data.establecimiento_ref) || esAdmin()) &&
+        invId == (request.resource.data.establecimiento_ref + '__' + request.resource.data.email) &&
+        request.resource.data.email == request.resource.data.email.lower() &&
+        request.resource.data.estado == 'pendiente';
+      allow update: if estaLogueado() &&
+        resource.data.email == request.auth.token.email.lower() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado']) &&
+        request.resource.data.estado == 'aceptada';
+      allow delete: if estaLogueado() &&
+        (esDuenioDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
     }
 
     // ---- Cumplimiento: ligado al establecimiento del usuario logueado, o admin ----

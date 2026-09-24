@@ -172,6 +172,30 @@ export default function DashboardPage() {
     [items]
   );
 
+  // Estado de cada trámite por su propio id (no el del cumplimiento), para
+  // poder resolver dependencias: un trámite puede declarar `depende_de`
+  // (array de tramite ids) y acá se arma el mapa que permite saber, para
+  // cada uno, si lo que necesita ya está vigente.
+  const estadoPorTramiteId = useMemo(() => {
+    const map = new Map();
+    items.forEach((i) => {
+      map.set(i.tramite.id, {
+        nombre: i.tramite.nombre,
+        estado: i.cumplimiento.estado,
+        resultado: i.cumplimiento.resultado,
+      });
+    });
+    return map;
+  }, [items]);
+
+  function dependenciasPendientes(tramite) {
+    return (tramite.depende_de || [])
+      .map((id) => estadoPorTramiteId.get(id))
+      // Si la dependencia no le corresponde a esta empresa (no_aplica) o no
+      // está en el checklist, no bloquea nada.
+      .filter((dep) => dep && dep.resultado !== "no_aplica" && dep.estado !== "vigente");
+  }
+
   const resumen = useMemo(() => {
     const conteo = { pendiente: 0, "en trámite": 0, vigente: 0, vencido: 0 };
     let vencenPronto = 0;
@@ -250,6 +274,13 @@ export default function DashboardPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
+              href="/dashboard/equipo"
+              className="rounded-md px-4 py-2 text-sm font-medium"
+              style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
+            >
+              Compartir acceso
+            </Link>
+            <Link
               href="/dashboard/informe"
               className="rounded-md px-4 py-2 text-sm font-medium"
               style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
@@ -312,6 +343,7 @@ export default function DashboardPage() {
               key={item.cumplimiento.id}
               item={item}
               establecimientoId={establecimiento.id}
+              dependenciasPendientes={dependenciasPendientes(item.tramite)}
               temaNombre={temasPorId.get(item.tramite.tema_ref)?.nombre}
               expandido={expandidoId === item.cumplimiento.id}
               onToggle={() =>
@@ -423,6 +455,7 @@ function IndicadorSecundario({ titulo, valor, activo, color }) {
 function FilaTramite({
   item,
   establecimientoId,
+  dependenciasPendientes,
   temaNombre,
   expandido,
   onToggle,
@@ -462,8 +495,15 @@ function FilaTramite({
                 ⚠ Alcance por verificar
               </span>
             )}
-            {cumplimiento.estado !== "vigente" && primerRequisitoTarea && (
-              <span style={{ color: "#587168" }}>Requiere: {primerRequisitoTarea}</span>
+            {dependenciasPendientes.length > 0 ? (
+              <span style={{ color: "#8a978f" }}>
+                🔒 Depende de: {dependenciasPendientes.map((d) => d.nombre).join(", ")}
+              </span>
+            ) : (
+              cumplimiento.estado !== "vigente" &&
+              primerRequisitoTarea && (
+                <span style={{ color: "#587168" }}>Próxima acción: {primerRequisitoTarea}</span>
+              )
             )}
           </p>
         </div>
@@ -499,6 +539,18 @@ function FilaTramite({
             <p className="text-xs font-medium tracking-wide uppercase" style={{ color: "#587168" }}>
               Requisitos
             </p>
+
+            {dependenciasPendientes.length > 0 && (
+              <div
+                className="mt-2 rounded-md p-3 text-xs"
+                style={{ background: "#F5F7F3", border: "1px solid #DDE6DF", color: "#587168" }}
+              >
+                🔒 Este trámite depende de que primero esté vigente:{" "}
+                <strong>{dependenciasPendientes.map((d) => d.nombre).join(", ")}</strong>. Podés
+                cargar datos mientras tanto, pero no vas a poder avanzarlo hasta resolver eso.
+              </div>
+            )}
+
             <p className="mt-2 text-sm" style={{ color: "#40544c" }}>
               {tramite.descripcion}
             </p>
