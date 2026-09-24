@@ -23,18 +23,22 @@ export const ESTADO_INICIAL = {
   empleados: "",
   superficieM2: "",
   procesos: "",
-  generaResiduosPeligrosos: false,
+  // Estos 5 booleanos arrancan en null ("sin responder"), no en false: un
+  // toggle que arranca marcado en "No" convierte una pregunta que nadie
+  // contestó todavía en una declaración negativa real. Se fuerza a elegir
+  // Sí o No explícitamente antes de poder confirmar (ver `confirmar()`).
+  generaResiduosPeligrosos: null,
   // Tri-estado (true | false | null): "null" es "no estoy seguro", y es
   // justo lo que hace que la regla de SIMEL quede en "requiere revisión" en
   // vez de asumir aplica o no_aplica sin tener el dato.
   transporteInterprovincial: null,
   jurisdiccionNacional: null,
-  generaResiduosEspeciales: false,
+  generaResiduosEspeciales: null,
   consumoAguaM3Dia: "",
-  vuelcaEfluentes: false,
+  vuelcaEfluentes: null,
   destinoVuelco: "",
-  tieneEmisionesGaseosas: false,
-  tieneHabilitacionVigente: false,
+  tieneEmisionesGaseosas: null,
+  tieneHabilitacionVigente: null,
 };
 
 /**
@@ -82,10 +86,39 @@ export default function EstablecimientoForm({
     setPaso((p) => Math.max(p - 1, 0));
   }
 
+  // Preguntas que tienen que tener una respuesta explícita antes de poder
+  // confirmar. Evita que una ficha se guarde con "No" o "0" que en realidad
+  // es "todavía no se respondió" (ver ESTADO_INICIAL).
+  function preguntasFaltantes() {
+    const faltan = [];
+    if (!form.industria_ref) faltan.push({ texto: "Rubro / industria", paso: 0 });
+    if (!form.jurisdiccion_ref) faltan.push({ texto: "Municipio", paso: 0 });
+    if (form.generaResiduosPeligrosos === null)
+      faltan.push({ texto: "¿Genera residuos peligrosos?", paso: 1 });
+    if (form.generaResiduosEspeciales === null)
+      faltan.push({ texto: "¿Genera residuos especiales?", paso: 1 });
+    if (form.consumoAguaM3Dia === "")
+      faltan.push({ texto: "Consumo de agua aproximado", paso: 1 });
+    if (form.vuelcaEfluentes === null)
+      faltan.push({ texto: "¿Vuelca efluentes líquidos?", paso: 1 });
+    if (form.vuelcaEfluentes === true && !form.destinoVuelco)
+      faltan.push({ texto: "Destino del vuelco", paso: 1 });
+    if (form.tieneEmisionesGaseosas === null)
+      faltan.push({ texto: "¿Tiene emisiones gaseosas?", paso: 1 });
+    if (form.tieneHabilitacionVigente === null)
+      faltan.push({ texto: "¿Tiene habilitación vigente?", paso: 1 });
+    return faltan;
+  }
+
   async function confirmar() {
-    if (!form.industria_ref || !form.jurisdiccion_ref) {
-      setError("Elegí el rubro y el municipio antes de confirmar.");
-      setPaso(0);
+    const faltan = preguntasFaltantes();
+    if (faltan.length > 0) {
+      setError(
+        `Faltan ${faltan.length} respuesta${faltan.length > 1 ? "s" : ""} antes de confirmar: ${faltan
+          .map((f) => f.texto)
+          .join(", ")}.`
+      );
+      setPaso(faltan[0].paso);
       return;
     }
     setEnviando(true);
@@ -95,9 +128,11 @@ export default function EstablecimientoForm({
         ...form,
         empleados: form.empleados ? Number(form.empleados) : null,
         superficieM2: form.superficieM2 ? Number(form.superficieM2) : null,
-        consumoAguaM3Dia: form.consumoAguaM3Dia
-          ? Number(form.consumoAguaM3Dia)
-          : 0,
+        // "" solo puede llegar acá si preguntasFaltantes() no corrió (no
+        // debería pasar), así que el fallback a null -no a 0- evita que un
+        // dato nunca cargado se guarde como un cero real.
+        consumoAguaM3Dia:
+          form.consumoAguaM3Dia !== "" ? Number(form.consumoAguaM3Dia) : null,
       };
       await onGuardar(datos);
     } catch (err) {
@@ -233,10 +268,10 @@ export default function EstablecimientoForm({
 
       {paso === 1 && (
         <div className="space-y-6">
-          <Toggle
+          <SiNoToggle
             label="¿Genera residuos peligrosos (Ley 24.051 nacional)?"
             ayuda="Residuos que puedan causar daño a seres vivos o contaminar suelo, agua o atmósfera, de alcance interjurisdiccional."
-            checked={form.generaResiduosPeligrosos}
+            valor={form.generaResiduosPeligrosos}
             onChange={(v) => {
               update("generaResiduosPeligrosos", v);
               // Si deja de declarar residuos peligrosos, las preguntas de
@@ -268,10 +303,10 @@ export default function EstablecimientoForm({
               />
             </div>
           )}
-          <Toggle
+          <SiNoToggle
             label="¿Genera residuos especiales (categorías Anexo I, Ley 11.720 PBA)?"
             ayuda="Aceites, solventes, pinturas, lodos u otras sustancias con características de residuo especial."
-            checked={form.generaResiduosEspeciales}
+            valor={form.generaResiduosEspeciales}
             onChange={(v) => update("generaResiduosEspeciales", v)}
           />
           <Campo label="Consumo de agua aproximado (m³/día)">
@@ -288,9 +323,9 @@ export default function EstablecimientoForm({
               reglamentación equivalente según tu jurisdicción).
             </p>
           </Campo>
-          <Toggle
+          <SiNoToggle
             label="¿Vuelca efluentes líquidos a algún cuerpo receptor?"
-            checked={form.vuelcaEfluentes}
+            valor={form.vuelcaEfluentes}
             onChange={(v) => update("vuelcaEfluentes", v)}
           />
           {form.vuelcaEfluentes && (
@@ -309,15 +344,15 @@ export default function EstablecimientoForm({
               </select>
             </Campo>
           )}
-          <Toggle
+          <SiNoToggle
             label="¿Tiene fuentes de emisión gaseosa a la atmósfera?"
             ayuda="Calderas, hornos, sistemas de extracción u otra fuente que vierta efluentes gaseosos."
-            checked={form.tieneEmisionesGaseosas}
+            valor={form.tieneEmisionesGaseosas}
             onChange={(v) => update("tieneEmisionesGaseosas", v)}
           />
-          <Toggle
+          <SiNoToggle
             label="¿Ya cuenta con Certificado de Aptitud Ambiental / categorización industrial vigente?"
-            checked={form.tieneHabilitacionVigente}
+            valor={form.tieneHabilitacionVigente}
             onChange={(v) => update("tieneHabilitacionVigente", v)}
           />
         </div>
@@ -342,7 +377,7 @@ export default function EstablecimientoForm({
           />
           <Resumen
             label="Residuos peligrosos"
-            valor={form.generaResiduosPeligrosos ? "Sí" : "No"}
+            valor={valorSiNo(form.generaResiduosPeligrosos)}
           />
           {form.generaResiduosPeligrosos && (
             <>
@@ -358,28 +393,32 @@ export default function EstablecimientoForm({
           )}
           <Resumen
             label="Residuos especiales"
-            valor={form.generaResiduosEspeciales ? "Sí" : "No"}
+            valor={valorSiNo(form.generaResiduosEspeciales)}
           />
           <Resumen
             label="Consumo de agua"
-            valor={`${form.consumoAguaM3Dia || 0} m³/día`}
+            valor={
+              form.consumoAguaM3Dia !== ""
+                ? `${form.consumoAguaM3Dia} m³/día`
+                : "Sin responder"
+            }
           />
           <Resumen
             label="Vuelca efluentes"
             valor={
-              form.vuelcaEfluentes
+              form.vuelcaEfluentes === true
                 ? DESTINOS_VUELCO.find((d) => d.value === form.destinoVuelco)
                     ?.label || "Sí"
-                : "No"
+                : valorSiNo(form.vuelcaEfluentes)
             }
           />
           <Resumen
             label="Emisiones gaseosas"
-            valor={form.tieneEmisionesGaseosas ? "Sí" : "No"}
+            valor={valorSiNo(form.tieneEmisionesGaseosas)}
           />
           <Resumen
             label="Habilitación vigente"
-            valor={form.tieneHabilitacionVigente ? "Sí" : "No"}
+            valor={valorSiNo(form.tieneHabilitacionVigente)}
           />
           <p className="pt-2 text-xs text-neutral-500">
             Al confirmar, volvemos a cruzar esta información contra la
@@ -387,6 +426,16 @@ export default function EstablecimientoForm({
             suma lo nuevo que corresponda, y se marca &ldquo;no aplica&rdquo;
             lo que deje de corresponder.
           </p>
+          {(() => {
+            const faltan = preguntasFaltantes();
+            if (faltan.length === 0) return null;
+            return (
+              <p className="pt-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                Faltan {faltan.length} respuesta{faltan.length > 1 ? "s" : ""}{" "}
+                para poder confirmar: {faltan.map((f) => f.texto).join(", ")}.
+              </p>
+            );
+          })()}
         </div>
       )}
 
@@ -443,24 +492,36 @@ function Campo({ label, children }) {
   );
 }
 
-function Toggle({ label, ayuda, checked, onChange }) {
+// Botonera Sí/No sin selección por defecto: a diferencia de un switch, acá
+// ninguna opción queda resaltada hasta que la persona elige una, así una
+// pregunta sin responder no se puede confundir visualmente con un "No".
+function SiNoToggle({ label, ayuda, valor, onChange }) {
+  const opciones = [
+    { v: true, texto: "Sí" },
+    { v: false, texto: "No" },
+  ];
   return (
     <div className="flex items-start justify-between gap-4 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
       <div>
         <p className="text-sm font-medium">{label}</p>
         {ayuda && <p className="mt-1 text-xs text-neutral-500">{ayuda}</p>}
       </div>
-      <button
-        type="button"
-        onClick={() => onChange(!checked)}
-        className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium ${
-          checked
-            ? "bg-emerald-600 text-white"
-            : "bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
-        }`}
-      >
-        {checked ? "Sí" : "No"}
-      </button>
+      <div className="flex shrink-0 gap-2">
+        {opciones.map((o) => (
+          <button
+            key={String(o.v)}
+            type="button"
+            onClick={() => onChange(o.v)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium ${
+              valor === o.v
+                ? "bg-emerald-600 text-white"
+                : "bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+            }`}
+          >
+            {o.texto}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -499,6 +560,14 @@ function valorTriEstado(v) {
   if (v === true) return "Sí";
   if (v === false) return "No";
   return "No estoy seguro";
+}
+
+// Para los booleanos Sí/No simples: acá "null" es "todavía sin responder",
+// no "no estoy seguro" (esa variante tri-estado es la de valorTriEstado).
+function valorSiNo(v) {
+  if (v === true) return "Sí";
+  if (v === false) return "No";
+  return "Sin responder";
 }
 
 function Resumen({ label, valor }) {

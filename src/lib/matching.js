@@ -228,13 +228,15 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
     idsEvaluados.add(tramite.id);
     const regla = reglasPorTramite.get(tramite.id);
 
-    // Trámites sin regla documentada todavía: se conserva el comportamiento
-    // previo (tema + jurisdicción coinciden → aplica). `regla_id: null`
-    // deja explícito en el dato cuál resultado está respaldado por una
-    // regla verificable y cuál todavía no.
+    // Trámites sin regla documentada todavía: sin una condición verificable
+    // no hay fundamento para publicarlos como obligación confirmada, así que
+    // quedan en "requiere_revision" (se muestran como "por confirmar", no
+    // como un trámite ya identificado) hasta que se documente y apruebe la
+    // regla correspondiente. `regla_id: null` deja explícito en el dato que
+    // ese resultado todavía no está respaldado por una regla verificable.
     const evaluacion = regla
       ? evaluarRegla(regla, datosEstablecimiento)
-      : { resultado: "aplica", condiciones_cumplidas: [], condiciones_sin_respuesta: [] };
+      : { resultado: "requiere_revision", condiciones_cumplidas: [], condiciones_sin_respuesta: [] };
 
     const datos_evaluados = {};
     if (regla) {

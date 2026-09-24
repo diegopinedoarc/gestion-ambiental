@@ -159,6 +159,11 @@ export default function DetalleEstablecimiento({ params }) {
                 >
                   {cumplimiento.estado}
                 </span>
+                {cumplimiento.resultado === "requiere_revision" && (
+                  <span className="rounded-full px-3 py-1 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                    ⚠ Alcance por verificar
+                  </span>
+                )}
                 {(() => {
                   const alerta = alertaVencimiento(cumplimiento.fecha_vencimiento);
                   if (!alerta) return null;
