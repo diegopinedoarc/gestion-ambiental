@@ -247,13 +247,22 @@ export default function DashboardPage() {
               {establecimiento.direccion} · CUIT {establecimiento.cuit || "—"}
             </p>
           </div>
-          <Link
-            href="/dashboard/editar"
-            className="rounded-md px-4 py-2 text-sm font-medium"
-            style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
-          >
-            Editar datos del establecimiento
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/informe"
+              className="rounded-md px-4 py-2 text-sm font-medium"
+              style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
+            >
+              Descargar informe
+            </Link>
+            <Link
+              href="/dashboard/editar"
+              className="rounded-md px-4 py-2 text-sm font-medium"
+              style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
+            >
+              Editar datos del establecimiento
+            </Link>
+          </div>
         </div>
 
         <Resumen resumen={resumen} />

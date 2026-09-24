@@ -112,9 +112,17 @@ export default function DetalleEstablecimiento({ params }) {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-12">
-      <Link href="/admin" className="text-sm text-emerald-600 hover:underline">
-        ← Volver al panel
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/admin" className="text-sm text-emerald-600 hover:underline">
+          ← Volver al panel
+        </Link>
+        <Link
+          href={`/dashboard/informe?id=${establecimiento.id}`}
+          className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-900"
+        >
+          Descargar informe
+        </Link>
+      </div>
 
       <h1 className="mt-4 text-2xl font-semibold">{establecimiento.nombre}</h1>
       <div className="mt-2 grid gap-1 text-sm text-neutral-500 sm:grid-cols-2">
