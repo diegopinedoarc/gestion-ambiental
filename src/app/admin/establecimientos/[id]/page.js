@@ -8,6 +8,7 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
 import { alertaVencimiento } from "@/lib/vencimientos";
 import PorQueAplica from "@/components/PorQueAplica";
+import Evidencias from "@/components/Evidencias";
 
 const ESTADO_COLOR = {
   pendiente: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
@@ -249,6 +250,7 @@ export default function DetalleEstablecimiento({ params }) {
             )}
 
             <PorQueAplica cumplimiento={cumplimiento} normativas={normativas} />
+            <Evidencias establecimientoId={establecimiento.id} cumplimientoId={cumplimiento.id} />
           </div>
         ))}
         {items.length === 0 && (

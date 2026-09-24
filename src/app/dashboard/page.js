@@ -16,6 +16,7 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
 import { alertaVencimiento, sugerirVencimiento } from "@/lib/vencimientos";
 import PorQueAplica from "@/components/PorQueAplica";
+import Evidencias from "@/components/Evidencias";
 
 const ESTADOS = ["pendiente", "en trámite", "vigente", "vencido", "no aplica"];
 
@@ -310,6 +311,7 @@ export default function DashboardPage() {
             <FilaTramite
               key={item.cumplimiento.id}
               item={item}
+              establecimientoId={establecimiento.id}
               temaNombre={temasPorId.get(item.tramite.tema_ref)?.nombre}
               expandido={expandidoId === item.cumplimiento.id}
               onToggle={() =>
@@ -418,7 +420,15 @@ function IndicadorSecundario({ titulo, valor, activo, color }) {
   );
 }
 
-function FilaTramite({ item, temaNombre, expandido, onToggle, onCambiarEstado, onCambiarFecha }) {
+function FilaTramite({
+  item,
+  establecimientoId,
+  temaNombre,
+  expandido,
+  onToggle,
+  onCambiarEstado,
+  onCambiarFecha,
+}) {
   const { cumplimiento, tramite, normativas } = item;
   const alerta = alertaVencimiento(cumplimiento.fecha_vencimiento);
   const primerRequisito = tramite.requisitos?.[0];
@@ -623,6 +633,11 @@ function FilaTramite({ item, temaNombre, expandido, onToggle, onCambiarEstado, o
                 periodicidad del trámite — corregila si el organismo te dio otro
                 plazo.
               </p>
+
+              <Evidencias
+                establecimientoId={establecimientoId}
+                cumplimientoId={cumplimiento.id}
+              />
             </div>
           </div>
         </div>

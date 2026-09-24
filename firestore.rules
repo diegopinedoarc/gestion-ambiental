@@ -86,6 +86,26 @@ service cloud.firestore {
           ) || esAdmin());
         allow update, delete: if false;
       }
+
+      // ---- Evidencias: certificados/constancias que la empresa sube como
+      // prueba de que el trámite se cumplió. A diferencia de `evaluaciones`
+      // acá sí se puede borrar (si subieron el archivo equivocado, lo
+      // borran y suben el correcto), pero no editar el registro. ----
+      match /evidencias/{evId} {
+        allow read: if estaLogueado() &&
+          (esDuenioDelEstablecimiento(
+            get(/databases/$(database)/documents/cumplimiento/$(id)).data.establecimiento_ref
+          ) || esAdmin());
+        allow create: if estaLogueado() &&
+          (esDuenioDelEstablecimiento(
+            get(/databases/$(database)/documents/cumplimiento/$(id)).data.establecimiento_ref
+          ) || esAdmin());
+        allow delete: if estaLogueado() &&
+          (esDuenioDelEstablecimiento(
+            get(/databases/$(database)/documents/cumplimiento/$(id)).data.establecimiento_ref
+          ) || esAdmin());
+        allow update: if false;
+      }
     }
   }
 }

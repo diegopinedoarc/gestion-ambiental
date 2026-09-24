@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// Reglas de Firebase Storage. A diferencia de firestore.rules, estas nunca
+// se publicaron todavía porque el proyecto no usaba Storage: hay que
+// pegarlas manualmente en Firebase Console → Storage → Rules → Publicar.
+//
+// Los archivos se guardan en:
+//   evidencias/{establecimientoId}/{cumplimientoId}/{archivo}
+// y solo puede leerlos/subirlos/borrarlos el dueño del establecimiento
+// (mismo criterio que `establecimientos.usuario_ref` en Firestore) o un
+// admin. `firestore.get()` permite consultar Firestore desde acá.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /evidencias/{establecimientoId}/{cumplimientoId}/{archivo} {
+      function esDuenio() {
+        return request.auth != null &&
+          firestore.exists(/databases/(default)/documents/establecimientos/$(establecimientoId)) &&
+          firestore.get(/databases/(default)/documents/establecimientos/$(establecimientoId)).data.usuario_ref == request.auth.uid;
+      }
+
+      function esAdmin() {
+        return request.auth != null &&
+          firestore.exists(/databases/(default)/documents/usuarios/$(request.auth.uid)) &&
+          firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data.role == 'admin';
+      }
+
+      allow read: if esDuenio() || esAdmin();
+      allow write: if (esDuenio() || esAdmin()) && request.resource.size < 10 * 1024 * 1024;
+      allow delete: if esDuenio() || esAdmin();
+    }
+  }
+}
