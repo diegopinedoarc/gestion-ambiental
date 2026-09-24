@@ -7,6 +7,7 @@ import { collection, doc, getDoc, getDocs, query, where } from "firebase/firesto
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
 import { alertaVencimiento } from "@/lib/vencimientos";
+import PorQueAplica from "@/components/PorQueAplica";
 
 const ESTADO_COLOR = {
   pendiente: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
@@ -238,6 +239,8 @@ export default function DetalleEstablecimiento({ params }) {
                 })}
               </ul>
             )}
+
+            <PorQueAplica cumplimiento={cumplimiento} normativas={normativas} />
           </div>
         ))}
         {items.length === 0 && (

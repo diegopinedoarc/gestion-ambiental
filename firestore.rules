@@ -70,6 +70,22 @@ service cloud.firestore {
       allow update: if estaLogueado() &&
         (esDuenioDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
       allow delete: if false;
+
+      // ---- Historial de evaluaciones de este trámite: mismo dueño que el
+      // cumplimiento padre (se mira con un `get()` porque acá no tenemos
+      // `resource.data.establecimiento_ref` directamente). Son snapshots que
+      // arma `generarChecklist`, nunca se editan ni se borran. ----
+      match /evaluaciones/{evId} {
+        allow read: if estaLogueado() &&
+          (esDuenioDelEstablecimiento(
+            get(/databases/$(database)/documents/cumplimiento/$(id)).data.establecimiento_ref
+          ) || esAdmin());
+        allow create: if estaLogueado() &&
+          (esDuenioDelEstablecimiento(
+            get(/databases/$(database)/documents/cumplimiento/$(id)).data.establecimiento_ref
+          ) || esAdmin());
+        allow update, delete: if false;
+      }
     }
   }
 }
