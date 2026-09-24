@@ -61,32 +61,55 @@ export default function AdminPage() {
     return m;
   }, [jurisdicciones]);
 
+  // Ids de establecimientos que existen hoy. Filtramos contra esto en todos
+  // los cálculos de abajo porque `cumplimiento` puede tener documentos
+  // huérfanos de pruebas viejas (establecimiento_ref que ya no existe: las
+  // reglas de Firestore no permiten borrar establecimientos, así que un
+  // registro de prueba borrado a mano desde la consola deja sueltos sus
+  // `cumplimiento`). Sin este filtro, esos huérfanos inflaban "trámites más
+  // frecuentes" por encima de la cantidad real de empresas registradas.
+  const establecimientosIds = useMemo(
+    () => new Set(establecimientos.map((e) => e.id)),
+    [establecimientos]
+  );
+
+  const cumplimientosValidos = useMemo(
+    () =>
+      cumplimientos.filter(
+        (c) => c.estado !== "no aplica" && establecimientosIds.has(c.establecimiento_ref)
+      ),
+    [cumplimientos, establecimientosIds]
+  );
+
   const porEstablecimiento = useMemo(() => {
     const m = new Map();
-    cumplimientos.forEach((c) => {
-      if (c.estado === "no aplica") return;
+    cumplimientosValidos.forEach((c) => {
       const arr = m.get(c.establecimiento_ref) || [];
       arr.push(c);
       m.set(c.establecimiento_ref, arr);
     });
     return m;
-  }, [cumplimientos]);
+  }, [cumplimientosValidos]);
 
   const tramitesMasFrecuentes = useMemo(() => {
-    const conteo = new Map();
-    cumplimientos.forEach((c) => {
-      if (c.estado === "no aplica") return;
-      conteo.set(c.tramite_ref, (conteo.get(c.tramite_ref) || 0) + 1);
+    // Contamos establecimientos únicos por trámite (un Set), no documentos
+    // de `cumplimiento`: así un trámite nunca puede mostrar más "empresas"
+    // que las que realmente lo tienen identificado.
+    const empresasPorTramite = new Map();
+    cumplimientosValidos.forEach((c) => {
+      const set = empresasPorTramite.get(c.tramite_ref) || new Set();
+      set.add(c.establecimiento_ref);
+      empresasPorTramite.set(c.tramite_ref, set);
     });
-    return Array.from(conteo.entries())
-      .map(([tramiteId, cantidad]) => ({
+    return Array.from(empresasPorTramite.entries())
+      .map(([tramiteId, empresas]) => ({
         tramite: tramitesPorId.get(tramiteId),
-        cantidad,
+        cantidad: empresas.size,
       }))
       .filter((x) => x.tramite)
       .sort((a, b) => b.cantidad - a.cantidad)
       .slice(0, 5);
-  }, [cumplimientos, tramitesPorId]);
+  }, [cumplimientosValidos, tramitesPorId]);
 
   if (loading || cargando) {
     return <div className="mx-auto max-w-5xl px-6 py-16 text-sm text-neutral-500">Cargando...</div>;
@@ -103,18 +126,32 @@ export default function AdminPage() {
       <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Tarjeta titulo="Empresas registradas" valor={establecimientos.length} />
         <Tarjeta
-          titulo="Trámites activos totales"
-          valor={cumplimientos.filter((c) => c.estado !== "no aplica").length}
+          titulo="Obligaciones identificadas"
+          valor={cumplimientosValidos.filter((c) => c.resultado !== "requiere_revision").length}
+        />
+        <Tarjeta
+          titulo="Por confirmar"
+          valor={cumplimientosValidos.filter((c) => c.resultado === "requiere_revision").length}
         />
         <Tarjeta
           titulo="Trámites vencidos"
-          valor={cumplimientos.filter((c) => c.estado === "vencido").length}
+          valor={cumplimientosValidos.filter((c) => c.estado === "vencido").length}
         />
       </div>
 
       {tramitesMasFrecuentes.length > 0 && (
         <div className="mt-10">
-          <h2 className="mb-3 text-lg font-semibold">Trámites más frecuentes</h2>
+          <h2 className="mb-3 text-lg font-semibold">
+            {establecimientos.length <= 1
+              ? "Trámites detectados en el piloto"
+              : "Trámites más frecuentes"}
+          </h2>
+          {establecimientos.length > 1 && (
+            <p className="mb-3 -mt-1 text-xs text-neutral-500">
+              Cantidad de empresas registradas (de {establecimientos.length}) que tienen
+              este trámite identificado.
+            </p>
+          )}
           <div className="space-y-2">
             {tramitesMasFrecuentes.map(({ tramite, cantidad }) => (
               <div
