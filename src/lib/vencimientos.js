@@ -33,6 +33,22 @@ export function diasParaVencimiento(fechaVencimiento) {
 }
 
 /**
+ * Con cuántos días de anticipación avisar del vencimiento de un trámite en
+ * particular ("alertas configurables"). Se resuelve en tres niveles, del más
+ * específico al más genérico:
+ *   1. `cumplimiento.dias_aviso`: la propia empresa lo pisó para su caso.
+ *   2. `tramite.dias_aviso_default`: vos (admin) definiste un valor para ese
+ *      trámite porque es más o menos crítico que el resto (ej: una
+ *      habilitación que si vence te clausuran vs. una renovación de trámite).
+ *   3. 30 días, si nadie definió nada — el comportamiento de siempre.
+ */
+export function resolverDiasAviso(cumplimiento, tramite) {
+  if (cumplimiento?.dias_aviso != null) return Number(cumplimiento.dias_aviso);
+  if (tramite?.dias_aviso_default != null) return Number(tramite.dias_aviso_default);
+  return 30;
+}
+
+/**
  * Devuelve { texto, tono } para mostrar como alerta junto a la fecha, o
  * null si no hay nada que avisar (falta la fecha, o falta mucho todavía).
  * tono: "vencido" | "porVencer"

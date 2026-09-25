@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState, use as usePromise } from "react";
+import { useEffect, useMemo, useState, use as usePromise } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
-import { alertaVencimiento } from "@/lib/vencimientos";
+import { alertaVencimiento, resolverDiasAviso } from "@/lib/vencimientos";
 import PorQueAplica from "@/components/PorQueAplica";
 import Evidencias from "@/components/Evidencias";
 
@@ -96,6 +96,27 @@ export default function DetalleEstablecimiento({ params }) {
     cargar();
   }, [perfil, id]);
 
+  // Mismo cálculo de dependencias que en el dashboard de la empresa: un
+  // trámite puede declarar `depende_de` (array de tramite ids) y acá se
+  // resuelve si esas dependencias ya están vigentes para esta empresa.
+  const estadoPorTramiteId = useMemo(() => {
+    const map = new Map();
+    items.forEach((i) => {
+      map.set(i.tramite.id, {
+        nombre: i.tramite.nombre,
+        estado: i.cumplimiento.estado,
+        resultado: i.cumplimiento.resultado,
+      });
+    });
+    return map;
+  }, [items]);
+
+  function dependenciasPendientes(tramite) {
+    return (tramite.depende_de || [])
+      .map((tid) => estadoPorTramiteId.get(tid))
+      .filter((dep) => dep && dep.resultado !== "no_aplica" && dep.estado !== "vigente");
+  }
+
   if (loading || cargando) {
     return <div className="mx-auto max-w-5xl px-6 py-16 text-sm text-neutral-500">Cargando...</div>;
   }
@@ -145,7 +166,9 @@ export default function DetalleEstablecimiento({ params }) {
 
       <h2 className="mt-8 mb-4 text-lg font-semibold">Checklist de cumplimiento</h2>
       <div className="space-y-3">
-        {items.map(({ cumplimiento, tramite, normativas }) => (
+        {items.map(({ cumplimiento, tramite, normativas }) => {
+          const dependencias = dependenciasPendientes(tramite);
+          return (
           <div
             key={cumplimiento.id}
             className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
@@ -174,8 +197,16 @@ export default function DetalleEstablecimiento({ params }) {
                     ⚠ Alcance por verificar
                   </span>
                 )}
+                {dependencias.length > 0 && (
+                  <span className="rounded-full px-3 py-1 text-xs font-medium bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                    🔒 Depende de: {dependencias.map((d) => d.nombre).join(", ")}
+                  </span>
+                )}
                 {(() => {
-                  const alerta = alertaVencimiento(cumplimiento.fecha_vencimiento);
+                  const alerta = alertaVencimiento(
+                    cumplimiento.fecha_vencimiento,
+                    resolverDiasAviso(cumplimiento, tramite)
+                  );
                   if (!alerta) return null;
                   const tonoClase =
                     alerta.tono === "vencido"
@@ -252,7 +283,8 @@ export default function DetalleEstablecimiento({ params }) {
             <PorQueAplica cumplimiento={cumplimiento} normativas={normativas} />
             <Evidencias establecimientoId={establecimiento.id} cumplimientoId={cumplimiento.id} />
           </div>
-        ))}
+          );
+        })}
         {items.length === 0 && (
           <p className="text-sm text-neutral-500">
             Esta empresa todavía no tiene trámites detectados.

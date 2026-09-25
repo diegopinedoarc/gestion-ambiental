@@ -6,7 +6,7 @@ import Link from "next/link";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
-import { alertaVencimiento } from "@/lib/vencimientos";
+import { alertaVencimiento, resolverDiasAviso } from "@/lib/vencimientos";
 
 const CAMPO_LABELS = {
   generaResiduosPeligrosos: "Genera residuos peligrosos",
@@ -226,7 +226,10 @@ function InformeContenido() {
             </thead>
             <tbody>
               {identificadas.map(({ cumplimiento, tramite, normativas }) => {
-                const alerta = alertaVencimiento(cumplimiento.fecha_vencimiento);
+                const alerta = alertaVencimiento(
+                  cumplimiento.fecha_vencimiento,
+                  resolverDiasAviso(cumplimiento, tramite)
+                );
                 return (
                   <tr key={cumplimiento.id} className="border-b border-neutral-100 align-top">
                     <td className="py-2 pr-3 font-medium">{tramite.nombre}</td>

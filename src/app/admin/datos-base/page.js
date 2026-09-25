@@ -59,6 +59,7 @@ export default function DatosBasePage() {
   const [jurisdicciones, setJurisdicciones] = useState([]);
   const [factores, setFactores] = useState([]);
   const [programas, setProgramas] = useState([]);
+  const [tramites, setTramites] = useState([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -68,14 +69,20 @@ export default function DatosBasePage() {
 
   async function recargar() {
     setCargando(true);
-    const [jurSnap, facSnap, progSnap] = await Promise.all([
+    const [jurSnap, facSnap, progSnap, tramSnap] = await Promise.all([
       getDocs(collection(db, "jurisdicciones")),
       getDocs(collection(db, "factores_emision")),
       getDocs(collection(db, "programas_produccion_limpia")),
+      getDocs(collection(db, "tramites")),
     ]);
     setJurisdicciones(jurSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     setFactores(facSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     setProgramas(progSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    setTramites(
+      tramSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""))
+    );
     setCargando(false);
   }
 
@@ -111,7 +118,114 @@ export default function DatosBasePage() {
         jurisdicciones={jurisdicciones}
         onCambio={recargar}
       />
+      <SeccionAlertas tramites={tramites} onCambio={recargar} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Alertas configurables por trámite
+// ---------------------------------------------------------------------------
+
+function SeccionAlertas({ tramites, onCambio }) {
+  const [busqueda, setBusqueda] = useState("");
+  const [valores, setValores] = useState({}); // { [tramiteId]: string en edición }
+  const [guardandoId, setGuardandoId] = useState(null);
+
+  const visibles = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return tramites;
+    return tramites.filter(
+      (t) => t.nombre?.toLowerCase().includes(q) || t.organismo?.toLowerCase().includes(q)
+    );
+  }, [tramites, busqueda]);
+
+  function valorActual(t) {
+    return valores[t.id] !== undefined ? valores[t.id] : t.dias_aviso_default ?? "";
+  }
+
+  async function guardar(t) {
+    const raw = valorActual(t);
+    const nuevo = raw === "" ? null : Number(raw);
+    setGuardandoId(t.id);
+    try {
+      await updateDoc(doc(db, "tramites", t.id), { dias_aviso_default: nuevo });
+      await onCambio();
+      setValores((prev) => {
+        const copia = { ...prev };
+        delete copia[t.id];
+        return copia;
+      });
+    } finally {
+      setGuardandoId(null);
+    }
+  }
+
+  return (
+    <section className="mt-14">
+      <h2 className="text-lg font-semibold" style={{ color: "#173A34" }}>
+        Alertas por trámite
+      </h2>
+      <p className="mt-1 text-sm" style={{ color: "#587168" }}>
+        Con cuántos días de anticipación avisar del vencimiento de cada trámite. Si lo dejás
+        vacío, se usa el valor general de la app (30 días). La empresa igual puede pisarlo para
+        su propio caso desde el trámite en su panel.
+      </p>
+
+      <input
+        type="text"
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+        placeholder="Buscar trámite por nombre u organismo..."
+        className="mt-4 w-full max-w-md rounded-md px-3 py-2 text-sm"
+        style={{ border: "1px solid #DDE6DF" }}
+      />
+
+      <div className="mt-4 space-y-2">
+        {visibles.map((t) => (
+          <div
+            key={t.id}
+            className="flex flex-wrap items-center justify-between gap-3 rounded-md px-4 py-3 text-sm"
+            style={{ border: "1px solid #DDE6DF" }}
+          >
+            <div className="min-w-0">
+              <p className="font-medium" style={{ color: "#173A34" }}>
+                {t.nombre}
+              </p>
+              <p className="mt-0.5" style={{ color: "#587168" }}>
+                {t.organismo}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                placeholder="30"
+                value={valorActual(t)}
+                onChange={(e) =>
+                  setValores((prev) => ({ ...prev, [t.id]: e.target.value }))
+                }
+                className="w-20 rounded-md px-2 py-1.5 text-right"
+                style={{ border: "1px solid #DDE6DF" }}
+              />
+              <span style={{ color: "#8a978f" }}>días</span>
+              <button
+                onClick={() => guardar(t)}
+                disabled={guardandoId === t.id}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {guardandoId === t.id ? "..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        ))}
+        {visibles.length === 0 && (
+          <p className="py-4 text-center text-sm" style={{ color: "#8a978f" }}>
+            No hay trámites que coincidan con la búsqueda.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 

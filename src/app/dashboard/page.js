@@ -14,7 +14,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
-import { alertaVencimiento, sugerirVencimiento } from "@/lib/vencimientos";
+import { alertaVencimiento, resolverDiasAviso, sugerirVencimiento } from "@/lib/vencimientos";
 import PorQueAplica from "@/components/PorQueAplica";
 import Evidencias from "@/components/Evidencias";
 
@@ -38,7 +38,10 @@ const FILTROS = [
 ];
 
 function prioridad(item) {
-  const alerta = alertaVencimiento(item.cumplimiento.fecha_vencimiento);
+  const alerta = alertaVencimiento(
+    item.cumplimiento.fecha_vencimiento,
+    resolverDiasAviso(item.cumplimiento, item.tramite)
+  );
   if (item.cumplimiento.estado === "vencido" || alerta?.tono === "vencido") return 0;
   if (alerta?.tono === "porVencer") return 1;
   if (item.cumplimiento.estado === "pendiente") return 2;
@@ -167,6 +170,21 @@ export default function DashboardPage() {
     );
   }
 
+  // "Alertas configurables", nivel empresa: pisa (por este trámite puntual)
+  // los días de anticipación con los que quiere que le avisen. `null` borra
+  // el override y vuelve a usar el valor del trámite o el de 30 por defecto.
+  async function cambiarDiasAviso(cumplimientoId, valor) {
+    const diasAviso = valor === "" || valor === null ? null : Number(valor);
+    await updateDoc(doc(db, "cumplimiento", cumplimientoId), { dias_aviso: diasAviso });
+    setItems((prev) =>
+      prev.map((it) =>
+        it.cumplimiento.id === cumplimientoId
+          ? { ...it, cumplimiento: { ...it.cumplimiento, dias_aviso: diasAviso } }
+          : it
+      )
+    );
+  }
+
   const activos = useMemo(
     () => items.filter((i) => i.cumplimiento.estado !== "no aplica"),
     [items]
@@ -202,7 +220,10 @@ export default function DashboardPage() {
     let vencidos = 0;
     activos.forEach((i) => {
       if (conteo[i.cumplimiento.estado] !== undefined) conteo[i.cumplimiento.estado]++;
-      const alerta = alertaVencimiento(i.cumplimiento.fecha_vencimiento);
+      const alerta = alertaVencimiento(
+        i.cumplimiento.fecha_vencimiento,
+        resolverDiasAviso(i.cumplimiento, i.tramite)
+      );
       if (alerta?.tono === "porVencer") vencenPronto++;
       if (alerta?.tono === "vencido") vencidos++;
     });
@@ -381,6 +402,7 @@ export default function DashboardPage() {
               }
               onCambiarEstado={cambiarEstado}
               onCambiarFecha={cambiarFecha}
+              onCambiarDiasAviso={cambiarDiasAviso}
             />
           ))}
           {visibles.length === 0 && (
@@ -489,9 +511,11 @@ function FilaTramite({
   onToggle,
   onCambiarEstado,
   onCambiarFecha,
+  onCambiarDiasAviso,
 }) {
   const { cumplimiento, tramite, normativas } = item;
-  const alerta = alertaVencimiento(cumplimiento.fecha_vencimiento);
+  const diasAviso = resolverDiasAviso(cumplimiento, tramite);
+  const alerta = alertaVencimiento(cumplimiento.fecha_vencimiento, diasAviso);
   const primerRequisito = tramite.requisitos?.[0];
   const primerRequisitoTarea =
     typeof primerRequisito === "string" ? primerRequisito : primerRequisito?.tarea;
@@ -713,6 +737,28 @@ function FilaTramite({
                 periodicidad del trámite — corregila si el organismo te dio otro
                 plazo.
               </p>
+
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium" style={{ color: "#173A34" }}>
+                  Avisarme con cuántos días de anticipación
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-28 rounded-md px-3 py-2"
+                  style={{ border: "1px solid #DDE6DF" }}
+                  value={cumplimiento.dias_aviso ?? ""}
+                  placeholder={String(tramite.dias_aviso_default ?? 30)}
+                  onChange={(e) => onCambiarDiasAviso(cumplimiento.id, e.target.value)}
+                />
+                <span className="mt-1 block text-xs" style={{ color: "#8a978f" }}>
+                  {cumplimiento.dias_aviso != null
+                    ? "Valor propio para este trámite. Dejá el campo vacío para volver al valor por defecto."
+                    : tramite.dias_aviso_default != null
+                    ? `Usando el valor sugerido para este trámite (${tramite.dias_aviso_default} días).`
+                    : "Usando el valor general de la app (30 días)."}
+                </span>
+              </label>
 
               <Evidencias
                 establecimientoId={establecimientoId}
