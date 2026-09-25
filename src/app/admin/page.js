@@ -16,6 +16,7 @@ export default function AdminPage() {
   const [industrias, setIndustrias] = useState([]);
   const [jurisdicciones, setJurisdicciones] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -26,18 +27,46 @@ export default function AdminPage() {
     async function cargar() {
       if (!perfil || perfil.role !== "admin") return;
       setCargando(true);
-      const [estSnap, cumplSnap, tramSnap, indSnap, jurSnap] = await Promise.all([
-        getDocs(collection(db, "establecimientos")),
-        getDocs(collection(db, "cumplimiento")),
-        getDocs(collection(db, "tramites")),
-        getDocs(collection(db, "industrias")),
-        getDocs(collection(db, "jurisdicciones")),
-      ]);
-      setEstablecimientos(estSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setCumplimientos(cumplSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setTramites(tramSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setIndustrias(indSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setJurisdicciones(jurSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setErrorCarga("");
+
+      // Promise.allSettled (en vez de Promise.all) para que, si UNA
+      // colección falla por permisos, no se quede la página pegada en
+      // "Cargando..." para siempre — se ve el resto igual y se muestra
+      // claramente cuál fue la que falló.
+      const nombres = ["establecimientos", "cumplimiento", "tramites", "industrias", "jurisdicciones"];
+      const resultados = await Promise.allSettled(
+        nombres.map((nombre) => getDocs(collection(db, nombre)))
+      );
+
+      const fallidas = [];
+      resultados.forEach((r, i) => {
+        if (r.status === "rejected") {
+          fallidas.push(nombres[i]);
+          console.error(`No se pudo leer "${nombres[i]}":`, r.reason);
+        }
+      });
+      if (fallidas.length > 0) {
+        setErrorCarga(
+          `No se pudieron cargar estas colecciones (revisá los permisos/reglas): ${fallidas.join(", ")}. Mirá la consola del navegador para el detalle de cada error.`
+        );
+      }
+
+      const [estRes, cumplRes, tramRes, indRes, jurRes] = resultados;
+      if (estRes.status === "fulfilled") {
+        setEstablecimientos(estRes.value.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
+      if (cumplRes.status === "fulfilled") {
+        setCumplimientos(cumplRes.value.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
+      if (tramRes.status === "fulfilled") {
+        setTramites(tramRes.value.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
+      if (indRes.status === "fulfilled") {
+        setIndustrias(indRes.value.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
+      if (jurRes.status === "fulfilled") {
+        setJurisdicciones(jurRes.value.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
       setCargando(false);
     }
     cargar();
@@ -132,6 +161,12 @@ export default function AdminPage() {
           Cargar datos base
         </Link>
       </div>
+
+      {errorCarga && (
+        <div className="mt-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
+          {errorCarga}
+        </div>
+      )}
 
       <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Tarjeta titulo="Empresas registradas" valor={establecimientos.length} />
