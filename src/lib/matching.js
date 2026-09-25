@@ -296,7 +296,20 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
     datosEstablecimiento
   );
 
-  const batch = writeBatch(db);
+  // Se hace en DOS pasos (dos commits separados), no uno solo: la regla de
+  // seguridad de `cumplimiento/{id}/evaluaciones` necesita leer el documento
+  // padre `cumplimiento/{id}` para autorizar la escritura, y Firestore no
+  // deja que una regla de seguridad vea un documento que se está creando en
+  // el mismo lote todavía sin confirmar. Si un trámite es nuevo (no existía
+  // `cumplimiento` previo), crear el trámite y su evaluación en el mismo
+  // batch hace que la verificación de la evaluación falle (el padre "no
+  // existe" todavía) y esa falla tira abajo el lote COMPLETO — ningún
+  // trámite se llega a crear, aunque la mayoría no tuviera ningún problema.
+  // Por eso: paso 1 confirma todos los `cumplimiento` (altas y
+  // actualizaciones); recién con eso ya guardado en el servidor, el paso 2
+  // guarda las evaluaciones, cuando el documento padre ya existe de verdad.
+  const batchPrincipal = writeBatch(db);
+  const pendientesEvaluacion = []; // { ref, snapshot }
 
   evaluados.forEach(({ tramite, camposResultado, previo }) => {
     const conFecha = { ...camposResultado, fecha_evaluacion: serverTimestamp() };
@@ -307,8 +320,8 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
       if (previo) {
         const cambios = { ...conFecha };
         if (previo.estado !== "no aplica") cambios.estado = "no aplica";
-        batch.update(previo.ref, cambios);
-        registrarEvaluacion(batch, previo.ref, conFecha);
+        batchPrincipal.update(previo.ref, cambios);
+        pendientesEvaluacion.push({ ref: previo.ref, snapshot: conFecha });
       }
       return;
     }
@@ -318,11 +331,11 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
       // Si había quedado "no aplica" en una evaluación anterior y ahora
       // vuelve a corresponder, se reabre como pendiente.
       if (previo.estado === "no aplica") cambios.estado = "pendiente";
-      batch.update(previo.ref, cambios);
-      registrarEvaluacion(batch, previo.ref, conFecha);
+      batchPrincipal.update(previo.ref, cambios);
+      pendientesEvaluacion.push({ ref: previo.ref, snapshot: conFecha });
     } else {
       const ref = doc(collection(db, "cumplimiento"));
-      batch.set(ref, {
+      batchPrincipal.set(ref, {
         establecimiento_ref: establecimientoId,
         tramite_ref: tramite.id,
         estado: "pendiente",
@@ -332,24 +345,39 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
         creado: serverTimestamp(),
         ...conFecha,
       });
-      registrarEvaluacion(batch, ref, conFecha);
+      pendientesEvaluacion.push({ ref, snapshot: conFecha });
     }
   });
 
   huerfanos.forEach((h) => {
     const camposResultado = { resultado: "no_aplica" };
-    batch.update(h.ref, { estado: "no aplica", ...camposResultado });
-    registrarEvaluacion(batch, h.ref, {
-      ...camposResultado,
-      regla_id: h.regla_id || null,
-      condiciones_cumplidas: [],
-      condiciones_sin_respuesta: [],
-      datos_evaluados: {},
-      fecha_evaluacion: serverTimestamp(),
+    batchPrincipal.update(h.ref, { estado: "no aplica", ...camposResultado });
+    pendientesEvaluacion.push({
+      ref: h.ref,
+      snapshot: {
+        ...camposResultado,
+        regla_id: h.regla_id || null,
+        condiciones_cumplidas: [],
+        condiciones_sin_respuesta: [],
+        datos_evaluados: {},
+        fecha_evaluacion: serverTimestamp(),
+      },
     });
   });
 
-  await batch.commit();
+  await batchPrincipal.commit();
+
+  // Paso 2: ahora que todos los `cumplimiento` ya están confirmados en el
+  // servidor, se puede guardar el historial de evaluaciones sin que la
+  // regla de seguridad choque contra un padre todavía inexistente.
+  if (pendientesEvaluacion.length > 0) {
+    const batchEvaluaciones = writeBatch(db);
+    pendientesEvaluacion.forEach(({ ref, snapshot }) => {
+      registrarEvaluacion(batchEvaluaciones, ref, snapshot);
+    });
+    await batchEvaluaciones.commit();
+  }
+
   return temas;
 }
 
