@@ -295,6 +295,13 @@ export default function DashboardPage() {
               Reporte GRI
             </Link>
             <Link
+              href="/dashboard/reporte-ifrs"
+              className="rounded-md px-4 py-2 text-sm font-medium"
+              style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
+            >
+              Reporte IFRS
+            </Link>
+            <Link
               href="/dashboard/equipo"
               className="rounded-md px-4 py-2 text-sm font-medium"
               style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
