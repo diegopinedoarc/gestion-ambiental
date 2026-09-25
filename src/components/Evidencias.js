@@ -29,19 +29,19 @@ function formatearFecha(ts) {
 
 /**
  * Certificados/constancias que la empresa sube como prueba de que un
- * trámite se cumplió (PDF, foto, etc.). Se guardan en Firebase Storage,
- * en `evidencias/{establecimientoId}/{cumplimientoId}/...`, y se listan
- * desde `cumplimiento/{id}/evidencias`. Componente compartido entre el
- * dashboard de la empresa y el detalle del panel admin.
+ * trámite (o un requisito ISO) se cumplió (PDF, foto, etc.). Se guardan en
+ * Firebase Storage, en `evidencias/{establecimientoId}/{cumplimientoId}/...`,
+ * y se listan desde `{coleccion}/{id}/evidencias`. Componente compartido
+ * entre el dashboard de la empresa, Gestión ISO y el panel admin.
  */
-export default function Evidencias({ establecimientoId, cumplimientoId }) {
+export default function Evidencias({ establecimientoId, cumplimientoId, coleccion = "cumplimiento" }) {
   const [archivos, setArchivos] = useState(null); // null = todavía no cargó
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState("");
 
   async function cargar() {
     const q = query(
-      collection(db, "cumplimiento", cumplimientoId, "evidencias"),
+      collection(db, coleccion, cumplimientoId, "evidencias"),
       orderBy("fecha", "desc")
     );
     const snap = await getDocs(q);
@@ -71,7 +71,7 @@ export default function Evidencias({ establecimientoId, cumplimientoId }) {
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
 
-      await addDoc(collection(db, "cumplimiento", cumplimientoId, "evidencias"), {
+      await addDoc(collection(db, coleccion, cumplimientoId, "evidencias"), {
         nombre: file.name,
         storagePath,
         url,
@@ -97,7 +97,7 @@ export default function Evidencias({ establecimientoId, cumplimientoId }) {
       // para no dejar un link roto en la lista.
       console.error("No se pudo borrar el archivo de Storage", err);
     }
-    await deleteDoc(doc(db, "cumplimiento", cumplimientoId, "evidencias", evidencia.id));
+    await deleteDoc(doc(db, coleccion, cumplimientoId, "evidencias", evidencia.id));
     setArchivos((prev) => (prev ? prev.filter((a) => a.id !== evidencia.id) : prev));
   }
 

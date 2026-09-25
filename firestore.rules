@@ -69,6 +69,12 @@ service cloud.firestore {
       allow read: if true;
       allow write: if esAdmin();
     }
+    // Catálogo de requisitos ISO 14001/9001 (clausula, descripción, por qué
+    // aplica, beneficio). Igual que tramites/reglas, lo cargás vos como admin.
+    match /normas_iso/{id} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
 
     // ---- Usuarios: cada uno lee/edita su propio perfil; el admin lee todos ----
     match /usuarios/{uid} {
@@ -202,6 +208,37 @@ service cloud.firestore {
       allow update: if estaLogueado() &&
         (esDuenioDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
       allow delete: if false;
+    }
+
+    // ---- Gestión ISO 14001/9001: un doc por requisito y establecimiento,
+    // creado por `sincronizarCumplimientoIso` cuando la empresa elige
+    // perseguir una norma. Mismo criterio dueño/colaborador que `cumplimiento`. ----
+    match /cumplimiento_iso/{id} {
+      allow read: if estaLogueado() &&
+        (esDuenioDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
+      allow create: if estaLogueado() &&
+        (esDuenioDelEstablecimiento(request.resource.data.establecimiento_ref) || esAdmin());
+      allow update: if estaLogueado() &&
+        (esDuenioDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
+      allow delete: if false;
+
+      // ---- Evidencias de un requisito ISO: mismo patrón que
+      // `cumplimiento/{id}/evidencias` (se puede borrar, no editar). ----
+      match /evidencias/{evId} {
+        allow read: if estaLogueado() &&
+          (esDuenioDelEstablecimiento(
+            get(/databases/$(database)/documents/cumplimiento_iso/$(id)).data.establecimiento_ref
+          ) || esAdmin());
+        allow create: if estaLogueado() &&
+          (esDuenioDelEstablecimiento(
+            get(/databases/$(database)/documents/cumplimiento_iso/$(id)).data.establecimiento_ref
+          ) || esAdmin());
+        allow delete: if estaLogueado() &&
+          (esDuenioDelEstablecimiento(
+            get(/databases/$(database)/documents/cumplimiento_iso/$(id)).data.establecimiento_ref
+          ) || esAdmin());
+        allow update: if false;
+      }
     }
   }
 }

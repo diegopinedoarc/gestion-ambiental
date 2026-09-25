@@ -42,6 +42,21 @@ const PROGRAMA_VACIO = {
   requisitos: [{ tarea: "", detalle: "" }],
 };
 
+const NORMAS_ISO = [
+  { id: "14001", label: "ISO 14001 (gestión ambiental)" },
+  { id: "9001", label: "ISO 9001 (gestión de calidad)" },
+];
+
+const REQUISITO_ISO_VACIO = {
+  norma: NORMAS_ISO[0].id,
+  clausula: "",
+  clausula_nombre: "",
+  requisito: "",
+  descripcion: "",
+  por_que_aplica: "",
+  beneficio: "",
+};
+
 /**
  * Panel para cargar directamente en Firestore, con formularios (sin tocar la
  * consola de Firebase), las colecciones de referencia que hoy hay que
@@ -60,6 +75,7 @@ export default function DatosBasePage() {
   const [factores, setFactores] = useState([]);
   const [programas, setProgramas] = useState([]);
   const [tramites, setTramites] = useState([]);
+  const [requisitosIso, setRequisitosIso] = useState([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -69,11 +85,12 @@ export default function DatosBasePage() {
 
   async function recargar() {
     setCargando(true);
-    const [jurSnap, facSnap, progSnap, tramSnap] = await Promise.all([
+    const [jurSnap, facSnap, progSnap, tramSnap, isoSnap] = await Promise.all([
       getDocs(collection(db, "jurisdicciones")),
       getDocs(collection(db, "factores_emision")),
       getDocs(collection(db, "programas_produccion_limpia")),
       getDocs(collection(db, "tramites")),
+      getDocs(collection(db, "normas_iso")),
     ]);
     setJurisdicciones(jurSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     setFactores(facSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -82,6 +99,11 @@ export default function DatosBasePage() {
       tramSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""))
+    );
+    setRequisitosIso(
+      isoSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.norma + a.clausula).localeCompare(b.norma + b.clausula))
     );
     setCargando(false);
   }
@@ -119,6 +141,7 @@ export default function DatosBasePage() {
         onCambio={recargar}
       />
       <SeccionAlertas tramites={tramites} onCambio={recargar} />
+      <SeccionIso requisitos={requisitosIso} onCambio={recargar} />
     </div>
   );
 }
@@ -759,6 +782,268 @@ function SeccionProgramas({ programas, jurisdicciones, onCambio }) {
         {programas.length === 0 && (
           <p className="py-4 text-center text-sm" style={{ color: "#8a978f" }}>
             Todavía no cargaste ningún programa.
+          </p>
+        )}
+      </div>
+
+      <style jsx>{`
+        .campo {
+          width: 100%;
+          border-radius: 0.375rem;
+          padding: 0.5rem 0.75rem;
+          border: 1px solid #dde6df;
+        }
+      `}</style>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo ISO 14001 / ISO 9001
+// ---------------------------------------------------------------------------
+
+function SeccionIso({ requisitos, onCambio }) {
+  const [form, setForm] = useState(REQUISITO_ISO_VACIO);
+  const [editandoId, setEditandoId] = useState(null);
+  const [filtroNorma, setFiltroNorma] = useState("todas");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
+
+  const visibles = useMemo(
+    () => (filtroNorma === "todas" ? requisitos : requisitos.filter((r) => r.norma === filtroNorma)),
+    [requisitos, filtroNorma]
+  );
+
+  function actualizar(campo, valor) {
+    setForm((prev) => ({ ...prev, [campo]: valor }));
+  }
+
+  function editar(r) {
+    setEditandoId(r.id);
+    setForm({
+      norma: r.norma || NORMAS_ISO[0].id,
+      clausula: r.clausula || "",
+      clausula_nombre: r.clausula_nombre || "",
+      requisito: r.requisito || "",
+      descripcion: r.descripcion || "",
+      por_que_aplica: r.por_que_aplica || "",
+      beneficio: r.beneficio || "",
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelar() {
+    setEditandoId(null);
+    setForm(REQUISITO_ISO_VACIO);
+    setError("");
+  }
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setError("");
+    if (
+      !form.clausula.trim() ||
+      !form.clausula_nombre.trim() ||
+      !form.requisito.trim() ||
+      !form.descripcion.trim() ||
+      !form.por_que_aplica.trim() ||
+      !form.beneficio.trim()
+    ) {
+      setError("Todos los campos son obligatorios — son justo los que le explican a la empresa por qué le sirve.");
+      return;
+    }
+
+    const datos = {
+      norma: form.norma,
+      clausula: form.clausula.trim(),
+      clausula_nombre: form.clausula_nombre.trim(),
+      requisito: form.requisito.trim(),
+      descripcion: form.descripcion.trim(),
+      por_que_aplica: form.por_que_aplica.trim(),
+      beneficio: form.beneficio.trim(),
+    };
+
+    setGuardando(true);
+    try {
+      if (editandoId) {
+        await updateDoc(doc(db, "normas_iso", editandoId), datos);
+      } else {
+        await addDoc(collection(db, "normas_iso"), datos);
+      }
+      cancelar();
+      await onCambio();
+    } catch (err) {
+      console.error("No se pudo guardar el requisito ISO", err);
+      setError("No se pudo guardar. Probá de nuevo.");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function eliminar(id) {
+    if (!confirm("¿Borrar este requisito? Las empresas que ya lo tengan en su checklist ISO lo van a dejar de ver.")) return;
+    await deleteDoc(doc(db, "normas_iso", id));
+    await onCambio();
+  }
+
+  return (
+    <section className="mt-14">
+      <h2 className="text-lg font-semibold" style={{ color: "#173A34" }}>
+        Catálogo ISO 14001 / ISO 9001
+      </h2>
+      <p className="mt-1 text-sm" style={{ color: "#587168" }}>
+        Cada requisito de la norma, con su cláusula, por qué le aplica a la empresa y qué
+        beneficio le trae cumplirlo — son los dos campos que la empresa ve al lado del
+        checklist en Gestión ISO, así que conviene que queden claros y concretos, no
+        genéricos.
+      </p>
+
+      <form
+        onSubmit={onSubmit}
+        className="mt-4 rounded-lg p-5"
+        style={{ background: "#F5F7F3", border: "1px solid #DDE6DF" }}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Campo label="Norma">
+            <select
+              value={form.norma}
+              onChange={(e) => actualizar("norma", e.target.value)}
+              className="campo"
+            >
+              {NORMAS_ISO.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.label}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          <div />
+
+          <Campo label="Cláusula (número)">
+            <input
+              type="text"
+              value={form.clausula}
+              onChange={(e) => actualizar("clausula", e.target.value)}
+              placeholder="5"
+              className="campo"
+            />
+          </Campo>
+          <Campo label="Nombre de la cláusula">
+            <input
+              type="text"
+              value={form.clausula_nombre}
+              onChange={(e) => actualizar("clausula_nombre", e.target.value)}
+              placeholder="Liderazgo"
+              className="campo"
+            />
+          </Campo>
+
+          <Campo label="Requisito (título corto)" className="sm:col-span-2">
+            <input
+              type="text"
+              value={form.requisito}
+              onChange={(e) => actualizar("requisito", e.target.value)}
+              placeholder="Tener una política ambiental escrita y comunicada"
+              className="campo"
+            />
+          </Campo>
+
+          <Campo label="Descripción (qué pide exactamente la norma)" className="sm:col-span-2">
+            <textarea
+              value={form.descripcion}
+              onChange={(e) => actualizar("descripcion", e.target.value)}
+              rows={2}
+              className="campo"
+            />
+          </Campo>
+
+          <Campo label="¿Por qué aplica? (a la empresa)" className="sm:col-span-2">
+            <textarea
+              value={form.por_que_aplica}
+              onChange={(e) => actualizar("por_que_aplica", e.target.value)}
+              rows={2}
+              placeholder="Es uno de los requisitos base de la norma: sin esto, un auditor no puede evaluar que hay un sistema de gestión real..."
+              className="campo"
+            />
+          </Campo>
+
+          <Campo label="Beneficio (qué gana la empresa al cumplirlo)" className="sm:col-span-2">
+            <textarea
+              value={form.beneficio}
+              onChange={(e) => actualizar("beneficio", e.target.value)}
+              rows={2}
+              placeholder="Le da a todo el equipo una referencia clara de qué se espera en materia ambiental, y es lo primero que pide un cliente o auditor..."
+              className="campo"
+            />
+          </Campo>
+        </div>
+
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+
+        <div className="mt-4 flex gap-2">
+          <button
+            type="submit"
+            disabled={guardando}
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {guardando ? "Guardando..." : editandoId ? "Guardar cambios" : "Agregar requisito"}
+          </button>
+          {editandoId && (
+            <button
+              type="button"
+              onClick={cancelar}
+              className="rounded-md px-4 py-2 text-sm font-medium"
+              style={{ border: "1px solid #DDE6DF", color: "#587168" }}
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
+      </form>
+
+      <div className="mt-4 flex gap-2">
+        {["todas", ...NORMAS_ISO.map((n) => n.id)].map((n) => (
+          <button
+            key={n}
+            onClick={() => setFiltroNorma(n)}
+            className="rounded-full px-3 py-1 text-xs font-medium"
+            style={
+              filtroNorma === n
+                ? { background: "#087E69", color: "#fff" }
+                : { background: "#fff", border: "1px solid #DDE6DF", color: "#587168" }
+            }
+          >
+            {n === "todas" ? "Todas" : NORMAS_ISO.find((x) => x.id === n)?.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {visibles.map((r) => (
+          <div key={r.id} className="rounded-md px-4 py-3 text-sm" style={{ border: "1px solid #DDE6DF" }}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium" style={{ color: "#173A34" }}>
+                  ISO {r.norma} · {r.clausula}. {r.clausula_nombre} — {r.requisito}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-3">
+                <button onClick={() => editar(r)} className="hover:underline" style={{ color: "#087E69" }}>
+                  Editar
+                </button>
+                <button onClick={() => eliminar(r.id)} className="text-red-600 hover:underline">
+                  Eliminar
+                </button>
+              </div>
+            </div>
+            <p className="mt-1" style={{ color: "#587168" }}>
+              {r.descripcion}
+            </p>
+          </div>
+        ))}
+        {visibles.length === 0 && (
+          <p className="py-4 text-center text-sm" style={{ color: "#8a978f" }}>
+            Todavía no cargaste ningún requisito.
           </p>
         )}
       </div>

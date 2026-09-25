@@ -508,3 +508,61 @@ export async function sincronizarProgramasPL(establecimientoId, datosEstablecimi
 
   await batch.commit();
 }
+
+/**
+ * Gestión ISO 14001 / ISO 9001 (Etapa A del plan: diagnóstico inicial).
+ *
+ * A diferencia de trámites legales o Producción Limpia, acá no hay "aplica
+ * según tema/jurisdicción": si la empresa decidió perseguir una norma
+ * (`establecimientos/{id}.normas_iso_interes`), TODOS los requisitos de esa
+ * norma le corresponden — es la norma la que define qué hay que cumplir,
+ * no un cálculo. Por eso `sincronizarCumplimientoIso` simplemente crea un
+ * `cumplimiento_iso` por cada requisito de las normas de interés que todavía
+ * no lo tenga, sin filtrar nada.
+ */
+
+/** Trae todo el catálogo de requisitos ISO para una o más normas ("14001", "9001"). */
+export async function buscarRequisitosIso(normas) {
+  if (!normas?.length) return [];
+  const q = query(collection(db, "normas_iso"), where("norma", "in", normas));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/**
+ * Crea (si no existen) los `cumplimiento_iso` de un establecimiento para las
+ * normas que eligió perseguir. Nunca pisa el `estado` de uno que ya exista
+ * (la empresa puede haber avanzado), ni borra nada si la empresa saca una
+ * norma de su lista — simplemente deja de sincronizar requisitos nuevos para
+ * esa norma (conserva el historial de lo ya hecho).
+ */
+export async function sincronizarCumplimientoIso(establecimientoId, normasInteres) {
+  if (!normasInteres?.length) return;
+  const requisitos = await buscarRequisitosIso(normasInteres);
+
+  const existQ = query(
+    collection(db, "cumplimiento_iso"),
+    where("establecimiento_ref", "==", establecimientoId)
+  );
+  const existSnap = await getDocs(existQ);
+  const existentesPorRequisito = new Set(existSnap.docs.map((d) => d.data().requisito_ref));
+
+  const batch = writeBatch(db);
+  let hayNuevos = false;
+
+  requisitos.forEach((req) => {
+    if (existentesPorRequisito.has(req.id)) return;
+    hayNuevos = true;
+    const ref = doc(collection(db, "cumplimiento_iso"));
+    batch.set(ref, {
+      establecimiento_ref: establecimientoId,
+      requisito_ref: req.id,
+      norma: req.norma,
+      estado: "no_iniciado",
+      responsable_uid: null,
+      creado: serverTimestamp(),
+    });
+  });
+
+  if (hayNuevos) await batch.commit();
+}
