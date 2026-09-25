@@ -48,6 +48,9 @@ export default function Navbar() {
               <Link href="/admin" className="hover:underline">
                 Admin
               </Link>
+              <Link href="/admin/datos-base" className="hover:underline">
+                Datos base
+              </Link>
               <button onClick={handleSignOut} className="hover:underline">
                 Salir
               </button>

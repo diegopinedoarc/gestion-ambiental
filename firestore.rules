@@ -65,6 +65,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if esAdmin();
     }
+    match /factores_emision/{id} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
 
     // ---- Usuarios: cada uno lee/edita su propio perfil; el admin lee todos ----
     match /usuarios/{uid} {
@@ -102,6 +106,17 @@ service cloud.firestore {
             esAdmin()
           );
         allow update: if false;
+      }
+
+      // ---- Huella de carbono: un doc por período (año) con el cálculo de
+      // emisiones alcance 1/2 (GHG Protocol). Se puede recalcular/sobrescribir
+      // el mismo período (por eso permite update, a diferencia de
+      // evaluaciones/evidencias), pero no borrar el historial. ----
+      match /huella_carbono/{periodo} {
+        allow read: if estaLogueado() && (esDuenioDelEstablecimiento(id) || esAdmin());
+        allow create: if estaLogueado() && (esDuenioDelEstablecimiento(id) || esAdmin());
+        allow update: if estaLogueado() && (esDuenioDelEstablecimiento(id) || esAdmin());
+        allow delete: if false;
       }
     }
 

@@ -118,10 +118,20 @@ export default function AdminPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-12">
-      <h1 className="text-2xl font-semibold">Panel de administración</h1>
-      <p className="mt-1 text-sm text-neutral-500">
-        Empresas registradas y estado agregado de cumplimiento.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Panel de administración</h1>
+          <p className="mt-1 text-sm text-neutral-500">
+            Empresas registradas y estado agregado de cumplimiento.
+          </p>
+        </div>
+        <Link
+          href="/admin/datos-base"
+          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+        >
+          Cargar datos base
+        </Link>
+      </div>
 
       <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Tarjeta titulo="Empresas registradas" valor={establecimientos.length} />
