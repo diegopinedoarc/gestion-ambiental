@@ -168,9 +168,6 @@ export function evaluarRegla(regla, datos) {
   return { resultado, condiciones_cumplidas, condiciones_sin_respuesta };
 }
 
-// Campos de `datos` que efectivamente participan de las condiciones de una
-// regla, para guardar solo eso como snapshot en `datos_evaluados` (y no el
-// establecimiento entero).
 // Guarda un snapshot de la evaluación en la subcolección
 // `cumplimiento/{id}/evaluaciones`, sin pisar nada: cada recálculo agrega un
 // documento nuevo. Es lo que permite reconstruir después qué cambió entre
@@ -180,6 +177,9 @@ function registrarEvaluacion(batch, cumplimientoRef, snapshot) {
   batch.set(evRef, { ...snapshot, fecha: serverTimestamp() });
 }
 
+// Campos de `datos` que efectivamente participan de las condiciones de una
+// regla, para guardar solo eso como snapshot en `datos_evaluados` (y no el
+// establecimiento entero).
 function camposDeRegla(regla) {
   const campos = new Set();
   regla.condiciones.forEach((cond) => {
@@ -193,18 +193,14 @@ function camposDeRegla(regla) {
 }
 
 /**
- * Genera (o regenera) el checklist de cumplimiento de un establecimiento:
- * un documento en `cumplimiento` por cada trámite que le corresponde.
- *
- * Separa dos cosas que antes estaban mezcladas: `resultado` (aplica /
- * no_aplica / requiere_revision, lo que dice la evaluación normativa) y
- * `estado` (pendiente / en trámite / vigente, lo que hizo la empresa). Cada
- * corrida recalcula `resultado` y guarda de qué regla y con qué datos salió,
- * pero nunca pisa el `estado` de gestión que ya haya cargado la empresa
- * (salvo para reactivar un trámite que había quedado en "no aplica" y ahora
- * vuelve a corresponder).
+ * Corazón del matching, sin escribir nada todavía: para cada trámite
+ * candidato (tema + jurisdicción) calcula su evaluación y la compara contra
+ * el `cumplimiento` que ya existiera para ese trámite. `generarChecklist` y
+ * `simularCambios` parten de acá — uno para aplicar los cambios, el otro
+ * para mostrarlos antes de confirmar (ver componente de comparación en
+ * `dashboard/editar`).
  */
-export async function generarChecklist(establecimientoId, datosEstablecimiento) {
+async function calcularEvaluaciones(establecimientoId, datosEstablecimiento) {
   const temas = detectarTemas(datosEstablecimiento);
   const candidatos = await buscarTramitesPorTemas(temas);
 
@@ -230,8 +226,8 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
     existSnap.docs.map((d) => [d.data().tramite_ref, { id: d.id, ref: d.ref, ...d.data() }])
   );
 
-  const batch = writeBatch(db);
   const idsEvaluados = new Set();
+  const evaluados = [];
 
   tramites.forEach((tramite) => {
     idsEvaluados.add(tramite.id);
@@ -268,30 +264,62 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
       datos_evaluados,
       condiciones_cumplidas: evaluacion.condiciones_cumplidas,
       condiciones_sin_respuesta: evaluacion.condiciones_sin_respuesta,
-      fecha_evaluacion: serverTimestamp(),
     };
 
-    const previo = existentesPorTramite.get(tramite.id);
+    evaluados.push({ tramite, camposResultado, previo: existentesPorTramite.get(tramite.id) || null });
+  });
 
-    if (evaluacion.resultado === "no_aplica") {
+  // Los que existían pero el trámite ya ni siquiera es candidato (cambió el
+  // tema o la jurisdicción del establecimiento) — se marcan "no aplica".
+  const huerfanos = existSnap.docs
+    .filter((d) => !idsEvaluados.has(d.data().tramite_ref) && d.data().estado !== "no aplica")
+    .map((d) => ({ id: d.id, ref: d.ref, ...d.data() }));
+
+  return { temas, evaluados, huerfanos };
+}
+
+/**
+ * Genera (o regenera) el checklist de cumplimiento de un establecimiento:
+ * un documento en `cumplimiento` por cada trámite que le corresponde.
+ *
+ * Separa dos cosas que antes estaban mezcladas: `resultado` (aplica /
+ * no_aplica / requiere_revision, lo que dice la evaluación normativa) y
+ * `estado` (pendiente / en trámite / vigente, lo que hizo la empresa). Cada
+ * corrida recalcula `resultado` y guarda de qué regla y con qué datos salió,
+ * pero nunca pisa el `estado` de gestión que ya haya cargado la empresa
+ * (salvo para reactivar un trámite que había quedado en "no aplica" y ahora
+ * vuelve a corresponder).
+ */
+export async function generarChecklist(establecimientoId, datosEstablecimiento) {
+  const { temas, evaluados, huerfanos } = await calcularEvaluaciones(
+    establecimientoId,
+    datosEstablecimiento
+  );
+
+  const batch = writeBatch(db);
+
+  evaluados.forEach(({ tramite, camposResultado, previo }) => {
+    const conFecha = { ...camposResultado, fecha_evaluacion: serverTimestamp() };
+
+    if (camposResultado.resultado === "no_aplica") {
       // No corresponde: si ya había un ítem de gestión se marca "no aplica"
       // conservando su historial; si no existía, no se crea nada nuevo.
       if (previo) {
-        const cambios = { ...camposResultado };
+        const cambios = { ...conFecha };
         if (previo.estado !== "no aplica") cambios.estado = "no aplica";
         batch.update(previo.ref, cambios);
-        registrarEvaluacion(batch, previo.ref, camposResultado);
+        registrarEvaluacion(batch, previo.ref, conFecha);
       }
       return;
     }
 
     if (previo) {
-      const cambios = { ...camposResultado };
+      const cambios = { ...conFecha };
       // Si había quedado "no aplica" en una evaluación anterior y ahora
       // vuelve a corresponder, se reabre como pendiente.
       if (previo.estado === "no aplica") cambios.estado = "pendiente";
       batch.update(previo.ref, cambios);
-      registrarEvaluacion(batch, previo.ref, camposResultado);
+      registrarEvaluacion(batch, previo.ref, conFecha);
     } else {
       const ref = doc(collection(db, "cumplimiento"));
       batch.set(ref, {
@@ -302,29 +330,181 @@ export async function generarChecklist(establecimientoId, datosEstablecimiento) 
         fecha_vencimiento: null,
         observaciones: "",
         creado: serverTimestamp(),
-        ...camposResultado,
+        ...conFecha,
       });
-      registrarEvaluacion(batch, ref, camposResultado);
+      registrarEvaluacion(batch, ref, conFecha);
     }
   });
 
-  // Marca como "no aplica" los que existían pero el trámite ya ni siquiera
-  // es candidato (cambió el tema o la jurisdicción del establecimiento).
-  existSnap.docs.forEach((d) => {
-    const data = d.data();
-    if (!idsEvaluados.has(data.tramite_ref) && data.estado !== "no aplica") {
-      const camposResultado = { resultado: "no_aplica" };
-      batch.update(d.ref, { estado: "no aplica", ...camposResultado });
-      registrarEvaluacion(batch, d.ref, {
-        ...camposResultado,
-        regla_id: data.regla_id || null,
-        condiciones_cumplidas: [],
-        condiciones_sin_respuesta: [],
-        datos_evaluados: {},
-      });
-    }
+  huerfanos.forEach((h) => {
+    const camposResultado = { resultado: "no_aplica" };
+    batch.update(h.ref, { estado: "no aplica", ...camposResultado });
+    registrarEvaluacion(batch, h.ref, {
+      ...camposResultado,
+      regla_id: h.regla_id || null,
+      condiciones_cumplidas: [],
+      condiciones_sin_respuesta: [],
+      datos_evaluados: {},
+      fecha_evaluacion: serverTimestamp(),
+    });
   });
 
   await batch.commit();
   return temas;
+}
+
+// Etiqueta corta y legible para una fila de la vista de comparación:
+// distingue "no identificado" (resultado no_aplica), "por confirmar"
+// (requiere_revision) y el estado de gestión normal (pendiente / en trámite
+// / vigente / vencido) cuando la regla sí está documentada y se cumple.
+function etiquetaCumplimiento(resultado, estado) {
+  if (resultado === "no_aplica") return "No identificado";
+  if (resultado === "requiere_revision") return `${estado} · por confirmar`;
+  return estado;
+}
+
+/**
+ * Simula qué cambiaría si se confirmaran estos `datosEstablecimiento`, sin
+ * escribir nada en Firestore. Devuelve solo las filas donde algo realmente
+ * cambia (mismo criterio que después aplica `generarChecklist`), para
+ * mostrar una tabla Antes → Después → Acción antes de que la empresa
+ * confirme una edición.
+ */
+export async function simularCambios(establecimientoId, datosEstablecimiento) {
+  const { evaluados, huerfanos } = await calcularEvaluaciones(
+    establecimientoId,
+    datosEstablecimiento
+  );
+
+  const filas = [];
+
+  evaluados.forEach(({ tramite, camposResultado, previo }) => {
+    const antes = previo ? etiquetaCumplimiento(previo.resultado, previo.estado) : "No existía";
+
+    let estadoDespues;
+    if (camposResultado.resultado === "no_aplica") {
+      estadoDespues = "no aplica";
+    } else if (!previo || previo.estado === "no aplica") {
+      estadoDespues = "pendiente";
+    } else {
+      estadoDespues = previo.estado;
+    }
+    const despues = etiquetaCumplimiento(camposResultado.resultado, estadoDespues);
+
+    if (antes === despues) return; // sin cambios: no vale la pena mostrarlo
+
+    let accion;
+    if (!previo) {
+      accion = "Se agrega al checklist.";
+    } else if (camposResultado.resultado === "no_aplica") {
+      accion = "Deja de corresponder: se marca \"no aplica\"; conserva certificado, fechas e historial.";
+    } else if (previo.estado === "no aplica") {
+      accion = "Vuelve a corresponder: se reabre como pendiente, conserva el historial.";
+    } else {
+      accion = "Cambia el resultado de la evaluación; conserva el estado de gestión.";
+    }
+
+    filas.push({ tramiteId: tramite.id, tramiteNombre: tramite.nombre, antes, despues, accion });
+  });
+
+  for (const h of huerfanos) {
+    const tSnap = await getDoc(doc(db, "tramites", h.tramite_ref));
+    const nombre = tSnap.exists() ? tSnap.data().nombre : h.tramite_ref;
+    filas.push({
+      tramiteId: h.tramite_ref,
+      tramiteNombre: nombre,
+      antes: etiquetaCumplimiento(h.resultado, h.estado),
+      despues: "No identificado",
+      accion: "Ya no es candidato (cambió tema o jurisdicción): se marca \"no aplica\", conserva el historial.",
+    });
+  }
+
+  return filas;
+}
+
+// ---------------------------------------------------------------------------
+// Producción Limpia: a diferencia de los trámites, acá no hay una obligación
+// legal que "aplica" o "no aplica" — son programas voluntarios (típicamente
+// provinciales/municipales) a los que una empresa puede sumarse. Por eso el
+// matching es más simple (solo tema + jurisdicción, sin evaluar reglas) y el
+// seguimiento es de interés/adhesión, no de cumplimiento normativo. Se
+// mantiene deliberadamente como un dominio aparte de `cumplimiento` para no
+// mezclar "obligatorio por ley" con "voluntario" en la misma colección.
+// ---------------------------------------------------------------------------
+
+/**
+ * Busca en Firestore los programas de Producción Limpia cuyo tema_ref esté
+ * entre los temas detectados. Mismo patrón que `buscarTramitesPorTemas`.
+ */
+export async function buscarProgramasPLPorTemas(temaIds) {
+  if (!temaIds.length) return [];
+  const q = query(
+    collection(db, "programas_produccion_limpia"),
+    where("tema_ref", "in", temaIds)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/**
+ * Genera (o regenera) las "adhesiones" candidatas de un establecimiento a
+ * programas de Producción Limpia, con el mismo criterio de tema+jurisdicción
+ * que ya usa `calcularEvaluaciones` para trámites. Nunca pisa el `estado`
+ * que la empresa ya haya elegido (interesado/en_curso/adherido/descartado);
+ * solo agrega programas nuevos como "candidato" y marca como "descartado"
+ * (conservando el historial) los que dejaron de corresponder.
+ */
+export async function sincronizarProgramasPL(establecimientoId, datosEstablecimiento) {
+  const temas = detectarTemas(datosEstablecimiento);
+  const candidatos = await buscarProgramasPLPorTemas(temas);
+
+  const jurisdiccionesOk = await jurisdiccionesAplicables(
+    datosEstablecimiento.jurisdiccion_ref
+  );
+  const programas = candidatos.filter((p) => jurisdiccionesOk.includes(p.jurisdiccion_ref));
+
+  const existQ = query(
+    collection(db, "adhesiones_pl"),
+    where("establecimiento_ref", "==", establecimientoId)
+  );
+  const existSnap = await getDocs(existQ);
+  const existentesPorPrograma = new Map(
+    existSnap.docs.map((d) => [d.data().programa_ref, { id: d.id, ref: d.ref, ...d.data() }])
+  );
+
+  const idsCandidatos = new Set();
+  const batch = writeBatch(db);
+
+  programas.forEach((programa) => {
+    idsCandidatos.add(programa.id);
+    const previo = existentesPorPrograma.get(programa.id);
+    if (previo) {
+      // Si había quedado "descartado" y el programa vuelve a corresponder
+      // (cambió algo del establecimiento), se reabre como candidato.
+      if (previo.estado === "descartado") {
+        batch.update(previo.ref, { estado: "candidato" });
+      }
+      return;
+    }
+    const ref = doc(collection(db, "adhesiones_pl"));
+    batch.set(ref, {
+      establecimiento_ref: establecimientoId,
+      programa_ref: programa.id,
+      estado: "candidato",
+      observaciones: "",
+      creado: serverTimestamp(),
+    });
+  });
+
+  // Los que ya no son candidatos (cambió tema o jurisdicción) se marcan
+  // "descartado" en vez de borrarse, salvo que la empresa ya los haya
+  // descartado ella misma.
+  existSnap.docs.forEach((d) => {
+    const data = d.data();
+    if (!idsCandidatos.has(data.programa_ref) && data.estado !== "descartado") {
+      batch.update(d.ref, { estado: "descartado" });
+    }
+  });
+
+  await batch.commit();
 }

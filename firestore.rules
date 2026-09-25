@@ -61,6 +61,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if esAdmin();
     }
+    match /programas_produccion_limpia/{id} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
 
     // ---- Usuarios: cada uno lee/edita su propio perfil; el admin lee todos ----
     match /usuarios/{uid} {
@@ -169,6 +173,20 @@ service cloud.firestore {
           ) || esAdmin());
         allow update: if false;
       }
+    }
+
+    // ---- Adhesiones a programas de Producción Limpia: mismo criterio de
+    // dueño/colaborador que `cumplimiento`, pero son voluntarias (la
+    // empresa puede cambiar el estado libremente, incluso "descartar" un
+    // programa que no le interesa) y no tienen historial de evaluaciones. ----
+    match /adhesiones_pl/{id} {
+      allow read: if estaLogueado() &&
+        (esDuenioDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
+      allow create: if estaLogueado() &&
+        (esDuenioDelEstablecimiento(request.resource.data.establecimiento_ref) || esAdmin());
+      allow update: if estaLogueado() &&
+        (esDuenioDelEstablecimiento(resource.data.establecimiento_ref) || esAdmin());
+      allow delete: if false;
     }
   }
 }

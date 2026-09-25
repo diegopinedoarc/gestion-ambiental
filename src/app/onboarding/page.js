@@ -15,7 +15,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
-import { generarChecklist } from "@/lib/matching";
+import { generarChecklist, sincronizarProgramasPL } from "@/lib/matching";
 import EstablecimientoForm from "@/components/EstablecimientoForm";
 
 export default function OnboardingPage() {
@@ -107,6 +107,7 @@ export default function OnboardingPage() {
       { merge: true }
     );
     await generarChecklist(ref.id, conUsuario);
+    await sincronizarProgramasPL(ref.id, conUsuario);
     router.push("/dashboard");
   }
 

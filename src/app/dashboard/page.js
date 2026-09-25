@@ -274,6 +274,13 @@ export default function DashboardPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
+              href="/dashboard/produccion-limpia"
+              className="rounded-md px-4 py-2 text-sm font-medium"
+              style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
+            >
+              Producción Limpia
+            </Link>
+            <Link
               href="/dashboard/equipo"
               className="rounded-md px-4 py-2 text-sm font-medium"
               style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
