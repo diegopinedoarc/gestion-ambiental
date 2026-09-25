@@ -288,6 +288,13 @@ export default function DashboardPage() {
               Producción Limpia
             </Link>
             <Link
+              href="/dashboard/reporte-gri"
+              className="rounded-md px-4 py-2 text-sm font-medium"
+              style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
+            >
+              Reporte GRI
+            </Link>
+            <Link
               href="/dashboard/equipo"
               className="rounded-md px-4 py-2 text-sm font-medium"
               style={{ background: "#fff", border: "1px solid #DDE6DF", color: "#173A34" }}
