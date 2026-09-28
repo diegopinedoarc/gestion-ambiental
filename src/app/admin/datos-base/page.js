@@ -477,12 +477,6 @@ function SeccionFactores({ factores, onCambio }) {
           border-radius: 0.375rem;
           padding: 0.5rem 0.75rem;
           border: 1px solid #dde6df;
-          background: #ffffff;
-          color: #173a34;
-        }
-        .campo::placeholder {
-          color: #8a978f;
-          opacity: 1;
         }
       `}</style>
     </section>
@@ -798,12 +792,6 @@ function SeccionProgramas({ programas, jurisdicciones, onCambio }) {
           border-radius: 0.375rem;
           padding: 0.5rem 0.75rem;
           border: 1px solid #dde6df;
-          background: #ffffff;
-          color: #173a34;
-        }
-        .campo::placeholder {
-          color: #8a978f;
-          opacity: 1;
         }
       `}</style>
     </section>
@@ -1066,12 +1054,6 @@ function SeccionIso({ requisitos, onCambio }) {
           border-radius: 0.375rem;
           padding: 0.5rem 0.75rem;
           border: 1px solid #dde6df;
-          background: #ffffff;
-          color: #173a34;
-        }
-        .campo::placeholder {
-          color: #8a978f;
-          opacity: 1;
         }
       `}</style>
     </section>
